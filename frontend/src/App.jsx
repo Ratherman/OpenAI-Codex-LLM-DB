@@ -373,6 +373,7 @@ function App() {
         error={messagesError || actionError}
         isLoadingMessages={messagesStatus === 'loading'}
         isSending={isSending}
+        memoryRounds={settings.memoryRounds}
         selectedModel={settings.model}
         onOpenControls={() => setMobileControlsOpen(true)}
         onOpenSidebar={() => setMobileSidebarOpen(true)}

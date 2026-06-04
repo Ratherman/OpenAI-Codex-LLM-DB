@@ -358,6 +358,7 @@ button {
 }
 
 .model-pill,
+.memory-pill,
 .db-status-pill {
   align-items: center;
   border-radius: 999px;
@@ -374,6 +375,12 @@ button {
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--muted);
+}
+
+.memory-pill {
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 34%, transparent);
+  color: var(--primary-strong);
 }
 
 .db-status-pill {

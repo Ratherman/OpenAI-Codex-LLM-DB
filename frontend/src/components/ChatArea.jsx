@@ -8,6 +8,7 @@ function ChatArea({
   error,
   isLoadingMessages,
   isSending,
+  memoryRounds,
   onOpenControls,
   onOpenSidebar,
   onRefreshDbHealth,
@@ -66,6 +67,7 @@ function ChatArea({
         </div>
         <div className="chat-status-group">
           <span className="model-pill">{selectedModel}</span>
+          <span className="memory-pill">目前記憶：{memoryRounds} 輪</span>
           <span
             className={`db-status-pill db-${dbHealth.status}`}
             title={dbHealth.version || dbHealth.error || '資料庫連線狀態'}

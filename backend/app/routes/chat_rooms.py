@@ -183,6 +183,13 @@ def create_chat_room_message(room_id):
 
     temperature = max(0, min(1, temperature))
 
+    try:
+        memory_rounds = int(payload.get("memoryRounds", 5))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "error": "memoryRounds must be an integer"}), 400
+
+    memory_rounds = max(1, min(10, memory_rounds))
+
     if not content:
         return jsonify({"status": "error", "error": "message is required"}), 400
 
@@ -207,6 +214,7 @@ def create_chat_room_message(room_id):
                 {
                     "model": model,
                     "temperature": payload.get("temperature"),
+                    "memory_rounds": memory_rounds,
                     "source": "frontend",
                 },
                 ensure_ascii=False,
@@ -226,12 +234,15 @@ def create_chat_room_message(room_id):
                 system_prompt=system_prompt,
                 temperature=temperature,
                 history=history,
+                memory_rounds=memory_rounds,
             )
             assistant_content = llm_result["message"]
             assistant_metadata = {
                 "model": llm_result["model"],
                 "provider": llm_result["provider"],
                 "response_id": llm_result.get("response_id"),
+                "memory_rounds": llm_result.get("memory_rounds"),
+                "memory_message_count": llm_result.get("memory_message_count"),
                 "source": "openai",
             }
         except MissingOpenAIKeyError as exc:
@@ -241,6 +252,7 @@ def create_chat_room_message(room_id):
             assistant_metadata = {
                 "model": model,
                 "provider": "openai",
+                "memory_rounds": memory_rounds,
                 "error": llm_error,
                 "source": "api",
             }
@@ -251,6 +263,7 @@ def create_chat_room_message(room_id):
             assistant_metadata = {
                 "model": model,
                 "provider": "openai",
+                "memory_rounds": memory_rounds,
                 "error": llm_error,
                 "source": "api",
             }

@@ -87,9 +87,35 @@ def build_input_messages(history, message):
     return input_messages
 
 
-def generate_reply(api_key, message, model, system_prompt, temperature, history=None):
+def select_recent_memory_rounds(history, memory_rounds):
+    selected_messages = []
+    completed_rounds = 0
+    has_assistant_in_current_round = False
+
+    for history_message in reversed(history):
+        if history_message.role not in {"user", "assistant"}:
+            continue
+
+        selected_messages.append(history_message)
+
+        if history_message.role == "assistant":
+            has_assistant_in_current_round = True
+        elif history_message.role == "user":
+            completed_rounds += 1
+            has_assistant_in_current_round = False
+            if completed_rounds >= memory_rounds:
+                break
+
+    if selected_messages and completed_rounds < memory_rounds and has_assistant_in_current_round:
+        completed_rounds += 1
+
+    return list(reversed(selected_messages))
+
+
+def generate_reply(api_key, message, model, system_prompt, temperature, history=None, memory_rounds=5):
     client = create_openai_client(api_key)
-    input_messages = build_input_messages(history or [], message)
+    selected_history = select_recent_memory_rounds(history or [], memory_rounds)
+    input_messages = build_input_messages(selected_history, message)
 
     response = client.responses.create(
         model=model,
@@ -103,4 +129,6 @@ def generate_reply(api_key, message, model, system_prompt, temperature, history=
         "model": model,
         "message": response.output_text,
         "response_id": response.id,
+        "memory_rounds": memory_rounds,
+        "memory_message_count": len(selected_history),
     }

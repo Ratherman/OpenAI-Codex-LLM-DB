@@ -284,7 +284,7 @@ curl http://127.0.0.1:5000/api/chat/rooms/1/messages
 ```powershell
 curl -X POST http://127.0.0.1:5000/api/chat/rooms/1/messages `
   -H "Content-Type: application/json" `
-  -d "{\"message\":\"hello\",\"model\":\"gpt-4o\",\"temperature\":0.3}"
+  -d "{\"message\":\"hello\",\"model\":\"gpt-4o\",\"temperature\":0.3,\"memoryRounds\":3}"
 ```
 
 後端會寫入：
@@ -305,6 +305,22 @@ LLM 尚未啟用：OPENAI_API_KEY is not configured. Please set it in .env and r
 - `content`
 - `metadata_json`
 - `created_at`
+
+## Memory 輪數
+
+右側 Control Panel 的 `Memory 輪數` 會控制每次送給 LLM 的最近對話歷史。
+
+- 範圍：`1` 到 `10`
+- 一輪代表一組 `user` + `assistant` 訊息
+- 後端會根據 `room_id` 從 `chat_messages` 讀取最近 N 輪
+- 組裝給 LLM 的內容包含：
+  - `systemPrompt`
+  - 最近 N 輪 `user` / `assistant` 歷史訊息
+  - 最新的 user message
+- 不會把整個聊天室所有訊息都送給 LLM
+- 不會把 `metadata_json` 當成 role message 塞進 LLM
+
+範例：如果 `memoryRounds` 是 `3`，後端最多會帶入最近 3 輪，也就是最多 6 則歷史訊息，再加上本次最新 user message。
 
 ## LLM Health API
 
