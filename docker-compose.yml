@@ -1,0 +1,19 @@
+version: '3.9'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: codex_db
+    restart: unless-stopped
+    ports:
+      - "3306:3306"  # 這樣本機可以直接連線
+    environment:
+      MYSQL_ROOT_PASSWORD: codex123
+      MYSQL_DATABASE: codex_demo
+      MYSQL_USER: codex_user
+      MYSQL_PASSWORD: codex_pass
+    volumes:
+      - db_data:/var/lib/mysql
+
+volumes:
+  db_data:

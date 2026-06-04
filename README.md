@@ -49,8 +49,9 @@ Codex，我正在上「OpenAI Codex 實戰：打造可串接資料庫的 AI Agen
 
 1. 檢查目前資料夾內容。
 2. 檢查 Node.js / npm 是否可用。
-3. 檢查 Python 版本是否可用，優先支援 Python 3.10+。
-4. 檢查 Docker 是否可用。
+3. 檢查 Python 版本是否可用，優先支援 Python 3.10+
+   目前已經有建立一個虛擬環境稱作是 Codex_Demo，他的 Python 環境是 python==3.11.15
+4. 檢查 Docker 是否可用。（這個需要打開 Docker Desktop）
 5. 檢查目前是否已經有 docker-compose.yml 或其他專案檔案。
 6. 依照我的課程目標，提出你建議的專案結構。
 
@@ -68,7 +69,7 @@ Codex，我正在上「OpenAI Codex 實戰：打造可串接資料庫的 AI Agen
 
 - React 聊天室 UI
 - Flask 後端 API
-- Docker MySQL 資料庫
+- Docker MySQL 資料庫，與員工和財務有些關聯
 - OpenAI API 聊天
 - Context Router 判斷一般聊天 / 查資料庫 / RAG / 圖片辨識
 - SQL Agent 可以安全查詢資料庫
@@ -899,11 +900,3 @@ Codex，我現在遇到錯誤。請你先不要新增功能，改成 Debug 模�
 
 請貼上錯誤訊息。
 ```
-
-## 講師提醒
-
-- 不要把真實 OpenAI API Key 放進投影片、README 或 git。
-- DB Write 一定要保留使用者確認流程，這是課程重點。
-- SQL Agent 先只教 SELECT，新增資料改用白名單工具。
-- 如果時間不夠，優先完成 Prompt 1-12；圖片 Skill 與 Audit Log 可以當進階題。
-- 如果學員 Docker MySQL 啟動失敗，可以先讓他旁聽 DB Agent 概念，或改用講師機 demo。
