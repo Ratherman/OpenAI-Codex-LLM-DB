@@ -24,12 +24,13 @@ const createLoadingAssistantMessage = (roomId, content = '正在等待 LLM 回�
   status: 'loading',
 })
 
-const createRouterDecisionMessage = (roomId, router, selectedRoute, status = 'router_pending') =>
+const createRouterDecisionMessage = (roomId, router, selectedRoute, status = 'router_pending', audit = null) =>
   createTemporaryMessage(roomId, 'assistant', 'Context Router 判斷結果', {
     type: 'router_decision',
     router,
     selectedRoute,
     status,
+    audit,
   })
 
 const defaultSettings = {
@@ -107,6 +108,13 @@ function App() {
     apiReachable: false,
     keyMasked: '',
     error: '',
+  })
+  const [auditLogs, setAuditLogs] = useState([])
+  const [tokenSummary, setTokenSummary] = useState({
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+    audit_log_count: 0,
   })
 
   const activeRoom = useMemo(
@@ -227,6 +235,32 @@ function App() {
     }
   }, [])
 
+  const loadAuditLogs = useCallback(async (roomId) => {
+    if (!roomId) {
+      setAuditLogs([])
+      setTokenSummary({
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+        audit_log_count: 0,
+      })
+      return
+    }
+
+    try {
+      const data = await apiRequest(`/api/chat/rooms/${roomId}/audit-logs?limit=20`)
+      setAuditLogs(data.audit_logs ?? [])
+      setTokenSummary(data.token_summary ?? {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+        audit_log_count: 0,
+      })
+    } catch {
+      setAuditLogs([])
+    }
+  }, [])
+
   useEffect(() => {
     loadRooms()
     checkDbHealth()
@@ -236,7 +270,8 @@ function App() {
 
   useEffect(() => {
     loadMessages(activeRoomId)
-  }, [activeRoomId, loadMessages])
+    loadAuditLogs(activeRoomId)
+  }, [activeRoomId, loadAuditLogs, loadMessages])
 
   const buildMessagePayload = (text, overrides = {}) => ({
     message: text,
@@ -327,6 +362,7 @@ function App() {
       data.messages ?? [],
     )
     await loadRooms(targetRoomId)
+    await loadAuditLogs(targetRoomId)
   }
 
   const handleCreateChat = async () => {
@@ -450,6 +486,7 @@ function App() {
         routerResult,
         selectedRoute,
         settings.autoRoute ? 'router_confirmed' : 'router_pending',
+        routeData.audit ?? null,
       )
 
       setMessages((current) =>
@@ -457,6 +494,7 @@ function App() {
           message.id === routerLoadingMessage.id ? routerDecisionMessage : message,
         ),
       )
+      await loadAuditLogs(targetRoomId)
 
       if (!settings.autoRoute) {
         setPendingRouter({
@@ -593,6 +631,7 @@ function App() {
       mergeReturnedMessages(data.messages ?? [])
       await loadRooms(activeRoom.id)
       await checkDbSummary()
+      await loadAuditLogs(activeRoom.id)
     } catch (error) {
       setActionError(error instanceof Error ? error.message : '確認寫入失敗')
     } finally {
@@ -614,6 +653,7 @@ function App() {
       })
       mergeReturnedMessages(data.messages ?? [])
       await loadRooms(activeRoom.id)
+      await loadAuditLogs(activeRoom.id)
     } catch (error) {
       setActionError(error instanceof Error ? error.message : '取消寫入失敗')
     } finally {
@@ -668,6 +708,7 @@ function App() {
       <ChatArea
         chat={activeChat}
         dbHealth={dbHealth}
+        enableAuditLog={settings.enableAuditLog}
         error={messagesError || actionError}
         enableImageSkill={settings.enableImageSkill}
         hasPendingRouter={Boolean(pendingRouter)}
@@ -675,6 +716,7 @@ function App() {
         isSending={isSending}
         memoryRounds={settings.memoryRounds}
         selectedModel={settings.model}
+        tokenSummary={tokenSummary}
         onCancelDbWrite={handleCancelDbWrite}
         onConfirmDbWrite={handleConfirmDbWrite}
         onConfirmRoute={handleConfirmRoute}
@@ -688,6 +730,7 @@ function App() {
 
       <ControlPanel
         collapsed={controlsCollapsed}
+        auditLogs={auditLogs}
         dbSummary={dbSummary}
         llmHealth={llmHealth}
         mobileOpen={mobileControlsOpen}

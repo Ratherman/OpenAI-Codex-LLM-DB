@@ -7,7 +7,13 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import get_session
-from app.models import AuditLog, ChatMessage, ChatRoom
+from app.models import ChatMessage, ChatRoom
+from app.services.audit_service import (
+    create_audit_log,
+    get_room_token_summary,
+    list_room_audit_logs,
+    serialize_audit_log,
+)
 from app.services.db_write_service import (
     DbWriteError,
     DbWriteExtraction,
@@ -23,6 +29,7 @@ from app.services.invoice_extraction_service import (
 from app.services.llm_service import MissingOpenAIKeyError, generate_reply, sanitize_error
 from app.services.rag_service import DEFAULT_TOP_K, RagError, run_rag
 from app.services.router_service import ROUTE_CAPABILITIES, RouterDecision, normalize_route, route_message
+from app.services.security_service import build_security_refusal, detect_unsafe_request
 from app.services.sql_agent_service import SqlAgentError, run_sql_agent
 
 chat_rooms_bp = Blueprint("chat_rooms", __name__)
@@ -254,23 +261,26 @@ def build_pending_invoice_followup_response(session, room_id, content, pending_i
     if db_write_result["status"] == "missing_fields":
         db_write_result["message"] = assistant_content
 
-    audit_log = AuditLog(
+    audit_log = create_audit_log(
+        session,
+        room_id=room_id,
+        action_type="image_invoice_followup",
+        route="image_skill",
+        model=model,
+        input_summary=content,
+        output_summary=assistant_content,
+        db_table="invoices",
+        usage=None,
+        metadata={
+            "source_message_id": pending_invoice["message"].id,
+            "updates": updates,
+            "merged_fields": merged_fields,
+            "db_write_status": db_write_result.get("status"),
+        },
         actor="frontend_user",
-        action="image_invoice_followup",
         target_type="chat_room",
-        target_id=str(room_id),
-        details=json.dumps(
-            {
-                "source_message_id": pending_invoice["message"].id,
-                "updates": updates,
-                "merged_fields": merged_fields,
-                "db_write_status": db_write_result.get("status"),
-            },
-            ensure_ascii=False,
-        ),
+        target_id=room_id,
     )
-    session.add(audit_log)
-    session.flush()
 
     return assistant_content, {
         "model": model,
@@ -530,6 +540,34 @@ def list_chat_room_messages(room_id):
         session.close()
 
 
+@chat_rooms_bp.get("/api/chat/rooms/<int:room_id>/audit-logs")
+def list_chat_room_audit_logs(room_id):
+    try:
+        limit = int(request.args.get("limit", 50))
+    except (TypeError, ValueError):
+        limit = 50
+
+    session = get_session()
+    try:
+        room, error_response = get_room_or_404(session, room_id)
+        if error_response:
+            return error_response
+
+        logs = list_room_audit_logs(session, room.id, limit=limit)
+        return jsonify(
+            {
+                "status": "ok",
+                "room": serialize_room(room),
+                "token_summary": get_room_token_summary(session, room.id),
+                "audit_logs": [serialize_audit_log(log) for log in logs],
+            }
+        )
+    except SQLAlchemyError as exc:
+        return jsonify({"status": "error", "error": str(exc)}), 500
+    finally:
+        session.close()
+
+
 @chat_rooms_bp.post("/api/chat/rooms/<int:room_id>/route")
 def route_chat_room_message(room_id):
     payload = request.get_json(silent=True) or {}
@@ -549,19 +587,48 @@ def route_chat_room_message(room_id):
         if error_response:
             return error_response
 
-        decision = route_message(
-            api_key=current_app.config["OPENAI_API_KEY"],
-            message=with_image_router_context(content, attachments),
+        unsafe = detect_unsafe_request(content)
+        if unsafe["blocked"]:
+            decision = RouterDecision(
+                route="general_chat",
+                confidence=1,
+                reason=f"安全檢查拒絕危險請求：{unsafe['reason']}",
+                required_capability="general_chat",
+                suggested_followup_question=None,
+            )
+        else:
+            decision = route_message(
+                api_key=current_app.config["OPENAI_API_KEY"],
+                message=with_image_router_context(content, attachments),
+                model=model,
+            )
+            pending_invoice = find_latest_open_invoice_write(session, room.id)
+            if pending_invoice and not attachments and is_invoice_followup_content(content):
+                decision = build_pending_invoice_router_decision()
+
+        audit_log = create_audit_log(
+            session,
+            room_id=room.id,
+            action_type="context_router",
+            route=decision.route,
             model=model,
+            input_summary=content,
+            output_summary=decision.reason,
+            usage=decision.usage,
+            metadata={
+                "router": serialize_router_decision(decision),
+                "attachments": attachments,
+                "unsafe": unsafe,
+            },
+            actor="context_router",
         )
-        pending_invoice = find_latest_open_invoice_write(session, room.id)
-        if pending_invoice and not attachments and is_invoice_followup_content(content):
-            decision = build_pending_invoice_router_decision()
+        session.commit()
         return jsonify(
             {
                 "status": "ok",
                 "room": serialize_room(room),
                 "router": serialize_router_decision(decision),
+                "audit": serialize_audit_log(audit_log),
             }
         )
     except SQLAlchemyError as exc:
@@ -589,7 +656,14 @@ def confirm_chat_room_db_write(room_id):
             return pending_error
 
         pending_message, pending_metadata, pending_write = result_tuple
-        result = confirm_db_write(session, pending_write, actor="frontend_user")
+        result = confirm_db_write(
+            session,
+            pending_write,
+            actor="frontend_user",
+            room_id=room.id,
+            model=pending_metadata.get("model"),
+            input_summary=f"確認寫入 {pending_write.get('tool')}",
+        )
 
         pending_write["status"] = "confirmed"
         pending_write["record_id"] = result["record_id"]
@@ -604,6 +678,7 @@ def confirm_chat_room_db_write(room_id):
                 "provider": "db_write_agent",
                 "selected_route": "db_write",
                 "db_write": result,
+                "audit": result.get("audit"),
                 "source": "db_write_confirm",
             },
         )
@@ -726,7 +801,9 @@ def create_chat_room_message(room_id):
         if error_response:
             return error_response
 
-        if enable_context_router:
+        unsafe_request = detect_unsafe_request(content)
+
+        if enable_context_router and not unsafe_request["blocked"]:
             router_decision = build_selected_router_decision(
                 payload=payload,
                 content=with_image_router_context(content, image_attachments),
@@ -734,6 +811,8 @@ def create_chat_room_message(room_id):
                 api_key=current_app.config["OPENAI_API_KEY"],
             )
             selected_route = router_decision.route
+        elif unsafe_request["blocked"]:
+            selected_route = "general_chat"
 
         pending_invoice = find_latest_open_invoice_write(session, room.id)
         should_continue_pending_invoice = bool(
@@ -778,7 +857,33 @@ def create_chat_room_message(room_id):
         llm_error = ""
         route_gate_message = get_route_gate_message(selected_route, payload)
 
-        if route_gate_message:
+        if unsafe_request["blocked"]:
+            status = "security_refusal"
+            assistant_content = build_security_refusal(unsafe_request["reason"])
+            audit_log = create_audit_log(
+                session,
+                room_id=room.id,
+                action_type="security_refusal",
+                route="security",
+                model=model,
+                input_summary=content,
+                output_summary=assistant_content,
+                metadata={
+                    "unsafe": unsafe_request,
+                    "selected_route": selected_route,
+                    "router": serialize_router_decision(router_decision),
+                },
+                actor="security_guard",
+            )
+            assistant_metadata = {
+                "model": model,
+                "provider": "security_guard",
+                "selected_route": "security",
+                "security": unsafe_request,
+                "audit": serialize_audit_log(audit_log),
+                "source": "security_guard",
+            }
+        elif route_gate_message:
             assistant_content = route_gate_message
             assistant_metadata = {
                 "model": model,
@@ -807,6 +912,7 @@ def create_chat_room_message(room_id):
                     "auto_route": auto_route,
                     "selected_route": selected_route,
                     "router": serialize_router_decision(router_decision),
+                    "usage": sql_agent_result.get("usage"),
                     "sql_agent": {
                         "route": sql_agent_result["route"],
                         "sql": sql_agent_result["sql"],
@@ -817,6 +923,7 @@ def create_chat_room_message(room_id):
                         "columns": sql_agent_result["columns"],
                         "rows": sql_agent_result["rows"],
                         "row_count": sql_agent_result["row_count"],
+                        "usage": sql_agent_result.get("usage"),
                     },
                     "source": "sql_agent",
                 }
@@ -855,11 +962,13 @@ def create_chat_room_message(room_id):
                     "auto_route": auto_route,
                     "selected_route": selected_route,
                     "router": serialize_router_decision(router_decision),
+                    "usage": rag_result.get("usage"),
                     "rag": {
                         "route": rag_result["route"],
                         "top_k": rag_result["top_k"],
                         "refs": rag_result["refs"],
                         "embedding_model": rag_result["embedding_model"],
+                        "usage": rag_result.get("usage"),
                     },
                     "source": "rag",
                 }
@@ -938,28 +1047,31 @@ def create_chat_room_message(room_id):
                         assistant_content = "辨識完成，但缺少必要欄位，請補充後再寫入資料庫。"
                         db_write_result["message"] = assistant_content
 
-                    audit_log = AuditLog(
+                    audit_log = create_audit_log(
+                        session,
+                        room_id=room.id,
+                        action_type="image_invoice_extraction",
+                        route="image_skill",
+                        model=extraction_result["model"],
+                        input_summary=content,
+                        output_summary=assistant_content,
+                        db_table="invoices",
+                        usage=extraction_result.get("usage"),
+                        metadata={
+                            "image": image,
+                            "extraction": extraction,
+                            "db_write_status": db_write_result.get("status"),
+                        },
                         actor="frontend_user",
-                        action="image_invoice_extraction",
                         target_type="upload",
                         target_id=image.get("filename"),
-                        details=json.dumps(
-                            {
-                                "room_id": room.id,
-                                "image": image,
-                                "extraction": extraction,
-                                "db_write_status": db_write_result.get("status"),
-                            },
-                            ensure_ascii=False,
-                        ),
                     )
-                    session.add(audit_log)
-                    session.flush()
 
                     assistant_metadata = {
                         "model": extraction_result["model"],
                         "provider": "image_skill",
                         "response_id": extraction_result.get("response_id"),
+                        "usage": extraction_result.get("usage"),
                         "memory_rounds": memory_rounds,
                         "context_router_enabled": enable_context_router,
                         "auto_route": auto_route,
@@ -973,28 +1085,27 @@ def create_chat_room_message(room_id):
                             "audit_log_id": audit_log.id,
                         },
                         "db_write": db_write_result,
+                        "audit": serialize_audit_log(audit_log),
                         "source": "image_skill",
                     }
                 except InvoiceExtractionError as exc:
                     status = "image_error"
                     llm_error = str(exc)
                     assistant_content = f"圖片辨識失敗：{llm_error}"
-                    audit_log = AuditLog(
+                    audit_log = create_audit_log(
+                        session,
+                        room_id=room.id,
+                        action_type="image_invoice_extraction_failed",
+                        route="image_skill",
+                        model=model,
+                        input_summary=content,
+                        output_summary=assistant_content,
+                        db_table="invoices",
+                        metadata={"image": image, "error": llm_error},
                         actor="frontend_user",
-                        action="image_invoice_extraction_failed",
                         target_type="upload",
                         target_id=image.get("filename"),
-                        details=json.dumps(
-                            {
-                                "room_id": room.id,
-                                "image": image,
-                                "error": llm_error,
-                            },
-                            ensure_ascii=False,
-                        ),
                     )
-                    session.add(audit_log)
-                    session.flush()
                     assistant_metadata = {
                         "model": model,
                         "provider": "image_skill",
@@ -1010,6 +1121,7 @@ def create_chat_room_message(room_id):
                             "error": llm_error,
                             "audit_log_id": audit_log.id,
                         },
+                        "audit": serialize_audit_log(audit_log),
                         "error": llm_error,
                         "source": "image_skill",
                     }
@@ -1030,6 +1142,7 @@ def create_chat_room_message(room_id):
                 "selected_route": selected_route,
                 "router": serialize_router_decision(router_decision),
                 "db_write": db_write_result,
+                "usage": db_write_result.get("usage"),
                 "source": "db_write_agent",
             }
         else:
@@ -1050,6 +1163,7 @@ def create_chat_room_message(room_id):
                     "response_id": llm_result.get("response_id"),
                     "memory_rounds": llm_result.get("memory_rounds"),
                     "memory_message_count": llm_result.get("memory_message_count"),
+                    "usage": llm_result.get("usage"),
                     "context_router_enabled": enable_context_router,
                     "auto_route": auto_route,
                     "selected_route": selected_route,
@@ -1086,6 +1200,85 @@ def create_chat_room_message(room_id):
                     "error": llm_error,
                     "source": "api",
                 }
+
+        if "audit" not in assistant_metadata:
+            sql_agent = assistant_metadata.get("sql_agent") or {}
+            db_write = assistant_metadata.get("db_write") or {}
+            rag = assistant_metadata.get("rag") or {}
+            route_for_audit = assistant_metadata.get("selected_route") or selected_route
+            provider = assistant_metadata.get("provider") or route_for_audit
+
+            if sql_agent:
+                action_type = "db_query"
+                sql_text = sql_agent.get("sql")
+                db_table = None
+                metadata_for_audit = {
+                    "provider": provider,
+                    "router": serialize_router_decision(router_decision),
+                    "row_count": sql_agent.get("row_count"),
+                    "validator_warnings": sql_agent.get("validator_warnings"),
+                }
+            elif rag:
+                action_type = "rag_retrieval"
+                sql_text = None
+                db_table = "knowledge_chunks"
+                metadata_for_audit = {
+                    "provider": provider,
+                    "router": serialize_router_decision(router_decision),
+                    "refs": rag.get("refs"),
+                    "top_k": rag.get("top_k"),
+                }
+            elif db_write:
+                action_type = "db_write_prepare"
+                sql_text = None
+                db_table = {
+                    "create_expense_report": "expense_reports",
+                    "create_invoice": "invoices",
+                }.get(db_write.get("tool"))
+                metadata_for_audit = {
+                    "provider": provider,
+                    "router": serialize_router_decision(router_decision),
+                    "db_write": {
+                        "status": db_write.get("status"),
+                        "tool": db_write.get("tool"),
+                        "missing_fields": db_write.get("missing_fields"),
+                        "origin": db_write.get("origin"),
+                    },
+                }
+            elif provider == "context_router":
+                action_type = "route_gate"
+                sql_text = None
+                db_table = None
+                metadata_for_audit = {
+                    "provider": provider,
+                    "router": serialize_router_decision(router_decision),
+                }
+            else:
+                action_type = "llm_general_chat"
+                sql_text = None
+                db_table = None
+                metadata_for_audit = {
+                    "provider": provider,
+                    "router": serialize_router_decision(router_decision),
+                    "memory_rounds": assistant_metadata.get("memory_rounds"),
+                    "memory_message_count": assistant_metadata.get("memory_message_count"),
+                }
+
+            audit_log = create_audit_log(
+                session,
+                room_id=room.id,
+                action_type=action_type,
+                route=route_for_audit,
+                model=assistant_metadata.get("model") or model,
+                input_summary=content,
+                output_summary=assistant_content,
+                sql_text=sql_text,
+                db_table=db_table,
+                usage=assistant_metadata.get("usage"),
+                metadata=metadata_for_audit,
+                actor=provider,
+            )
+            assistant_metadata["audit"] = serialize_audit_log(audit_log)
 
         assistant_message = make_assistant_message(room.id, assistant_content, assistant_metadata)
         room.updated_at = datetime.utcnow()

@@ -16,7 +16,7 @@ const toolLabels = {
   create_invoice: '新增發票',
 }
 
-function RouterDecisionCard({ message, onConfirmRoute, onSelectRoute }) {
+function RouterDecisionCard({ message, onConfirmRoute, onSelectRoute, showAuditDetails }) {
   const metadata = message.metadata ?? {}
   const router = metadata.router
   const status = metadata.status ?? message.status
@@ -94,6 +94,8 @@ function RouterDecisionCard({ message, onConfirmRoute, onSelectRoute }) {
       ) : (
         <p className="router-confirmed-note">已用 {selectedRoute} 執行。</p>
       )}
+
+      {showAuditDetails ? <ExecutionDetails message={message} compact /> : null}
     </div>
   )
 }
@@ -417,7 +419,79 @@ function ImageSkillPanel({ imageSkill, dbWrite, message, onCancelDbWrite, onConf
   )
 }
 
-function AssistantContent({ message, onCancelDbWrite, onConfirmDbWrite }) {
+function ExecutionDetails({ message, compact = false }) {
+  const metadata = message.metadata ?? {}
+  const audit = metadata.audit
+  const usage =
+    metadata.usage ??
+    (audit
+      ? {
+          prompt_tokens: audit.prompt_tokens,
+          completion_tokens: audit.completion_tokens,
+          total_tokens: audit.total_tokens,
+        }
+      : null)
+  const route =
+    metadata.selected_route ??
+    metadata.selectedRoute ??
+    metadata.sql_agent?.route ??
+    metadata.rag?.route ??
+    metadata.image_skill?.route ??
+    audit?.route
+  const model = metadata.model ?? audit?.model
+  const sql = metadata.sql_agent?.sql ?? audit?.sql_text
+  const refs = metadata.rag?.refs ?? audit?.metadata?.refs ?? []
+  const hasUsage = usage && Object.values(usage).some((value) => value !== null && value !== undefined)
+  const hasDetails = audit || route || model || sql || refs.length || hasUsage
+
+  if (!hasDetails) return null
+
+  return (
+    <details className={`execution-details ${compact ? 'is-compact' : ''}`}>
+      <summary>執行細節</summary>
+      <div className="execution-detail-grid">
+        <div>
+          <span>route</span>
+          <strong>{route ?? '-'}</strong>
+        </div>
+        <div>
+          <span>model</span>
+          <strong>{model ?? '-'}</strong>
+        </div>
+        <div>
+          <span>tokens</span>
+          <strong>
+            {hasUsage
+              ? `${usage.prompt_tokens ?? 0} / ${usage.completion_tokens ?? 0} / ${usage.total_tokens ?? 0}`
+              : '-'}
+          </strong>
+        </div>
+        <div>
+          <span>audit id</span>
+          <strong>{audit?.id ? `#${audit.id}` : '-'}</strong>
+        </div>
+      </div>
+
+      {sql ? (
+        <pre className="execution-sql">
+          <code>{sql}</code>
+        </pre>
+      ) : null}
+
+      {refs.length ? (
+        <div className="execution-ref-list">
+          {refs.map((ref) => (
+            <span key={ref.index ?? ref.title}>
+              [{ref.index}] {ref.title} · {Number(ref.similarity ?? 0).toFixed(4)}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </details>
+  )
+}
+
+function AssistantContent({ message, onCancelDbWrite, onConfirmDbWrite, showAuditDetails }) {
   const sqlAgent = message.metadata?.sql_agent
   const dbWrite = message.metadata?.db_write
   const rag = message.metadata?.rag
@@ -445,11 +519,19 @@ function AssistantContent({ message, onCancelDbWrite, onConfirmDbWrite }) {
       {rag ? <RagRouteBadge rag={rag} /> : null}
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
       {rag ? <RagReferences rag={rag} /> : null}
+      {showAuditDetails ? <ExecutionDetails message={message} /> : null}
     </>
   )
 }
 
-function MessageBubble({ message, onCancelDbWrite, onConfirmDbWrite, onConfirmRoute, onSelectRoute }) {
+function MessageBubble({
+  message,
+  onCancelDbWrite,
+  onConfirmDbWrite,
+  onConfirmRoute,
+  onSelectRoute,
+  showAuditDetails = false,
+}) {
   const isUser = message.role === 'user'
   const isLoading = message.status === 'loading'
   const isRouterDecision = message.metadata?.type === 'router_decision'
@@ -474,7 +556,12 @@ function MessageBubble({ message, onCancelDbWrite, onConfirmDbWrite, onConfirmRo
           .join(' ')}
       >
         {isRouterDecision ? (
-          <RouterDecisionCard message={message} onConfirmRoute={onConfirmRoute} onSelectRoute={onSelectRoute} />
+          <RouterDecisionCard
+            message={message}
+            showAuditDetails={showAuditDetails}
+            onConfirmRoute={onConfirmRoute}
+            onSelectRoute={onSelectRoute}
+          />
         ) : isLoading ? (
           <span className="typing-indicator" aria-label="等待 LLM 回覆">
             <span />
@@ -489,6 +576,7 @@ function MessageBubble({ message, onCancelDbWrite, onConfirmDbWrite, onConfirmRo
         ) : (
           <AssistantContent
             message={message}
+            showAuditDetails={showAuditDetails}
             onCancelDbWrite={onCancelDbWrite}
             onConfirmDbWrite={onConfirmDbWrite}
           />

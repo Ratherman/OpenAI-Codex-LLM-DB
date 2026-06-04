@@ -8,8 +8,9 @@ from openai import OpenAIError
 from pydantic import BaseModel, Field, ValidationError, model_validator
 from sqlalchemy import or_, select
 
-from app.models import AuditLog, Employee, ExpenseReport, Invoice, Vendor
-from app.services.llm_service import create_openai_client, sanitize_error
+from app.models import Employee, ExpenseReport, Invoice, Vendor
+from app.services.audit_service import create_audit_log, serialize_audit_log
+from app.services.llm_service import create_openai_client, extract_token_usage, sanitize_error
 
 WriteToolName = Literal["create_expense_report", "create_invoice"]
 
@@ -58,6 +59,7 @@ class DbWriteExtraction(BaseModel):
     fields: dict[str, Any] = Field(default_factory=dict)
     reason: str = ""
     source: str = "openai"
+    usage: dict | None = None
 
 
 class CreateExpenseReportInput(BaseModel):
@@ -220,6 +222,7 @@ def extract_db_write_request(api_key, message, model):
         extraction = DbWriteExtraction.model_validate(payload)
         extraction.fields = normalize_fields(extraction.fields)
         extraction.source = "openai"
+        extraction.usage = extract_token_usage(response)
         return extraction
     except (json.JSONDecodeError, ValidationError) as exc:
         return fallback_extract_db_write(message, f"DB Write 抽取輸出不是合法 JSON，已使用 fallback：{exc}")
@@ -362,10 +365,14 @@ def prepare_db_write(session, api_key, message, model):
     fields = normalize_fields(extraction.fields)
 
     if extraction.tool == "create_expense_report":
-        return prepare_expense_write(session, fields, extraction)
+        result = prepare_expense_write(session, fields, extraction)
+        result["usage"] = extraction.usage
+        return result
 
     if extraction.tool == "create_invoice":
-        return prepare_invoice_write(session, fields, extraction)
+        result = prepare_invoice_write(session, fields, extraction)
+        result["usage"] = extraction.usage
+        return result
 
     return {
         "status": "missing_fields",
@@ -418,7 +425,7 @@ def confirm_invoice_write(session, pending_write):
     return invoice
 
 
-def confirm_db_write(session, pending_write, actor="user"):
+def confirm_db_write(session, pending_write, actor="user", room_id=None, model=None, input_summary=""):
     if pending_write.get("status") != "pending_confirmation":
         raise DbWriteError("這筆資料不是待確認寫入狀態。")
 
@@ -436,24 +443,27 @@ def confirm_db_write(session, pending_write, actor="user"):
     else:
         raise DbWriteError("不支援的寫入工具。")
 
-    audit_log = AuditLog(
+    audit_log = create_audit_log(
+        session,
+        room_id=room_id,
+        action_type=action,
+        route="db_write",
+        model=model,
+        input_summary=input_summary or f"confirm {tool}",
+        output_summary=success_message,
+        db_table="expense_reports" if tool == "create_expense_report" else "invoices",
+        db_record_id=record.id,
+        metadata={
+            "tool": tool,
+            "fields": pending_write.get("fields"),
+            "resolved": pending_write.get("resolved"),
+            "origin": pending_write.get("origin"),
+            "image": pending_write.get("image"),
+        },
         actor=actor,
-        action=action,
         target_type=target_type,
-        target_id=str(record.id),
-        details=json.dumps(
-            {
-                "tool": tool,
-                "fields": pending_write.get("fields"),
-                "resolved": pending_write.get("resolved"),
-                "origin": pending_write.get("origin"),
-                "image": pending_write.get("image"),
-            },
-            ensure_ascii=False,
-        ),
+        target_id=record.id,
     )
-    session.add(audit_log)
-    session.flush()
 
     return {
         "status": "confirmed",
@@ -461,5 +471,6 @@ def confirm_db_write(session, pending_write, actor="user"):
         "record_id": record.id,
         "target_type": target_type,
         "audit_log_id": audit_log.id,
+        "audit": serialize_audit_log(audit_log),
         "message": success_message,
     }

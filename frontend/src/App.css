@@ -359,6 +359,7 @@ button {
 
 .model-pill,
 .memory-pill,
+.token-pill,
 .db-status-pill {
   align-items: center;
   border-radius: 999px;
@@ -381,6 +382,13 @@ button {
   background: var(--primary-soft);
   border: 1px solid color-mix(in srgb, var(--primary) 34%, transparent);
   color: var(--primary-strong);
+}
+
+.token-pill {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .db-status-pill {
@@ -999,6 +1007,77 @@ button {
   margin: 0;
 }
 
+.execution-details {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 14px;
+  overflow: hidden;
+}
+
+.execution-details.is-compact {
+  margin-top: 0;
+}
+
+.execution-details summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+
+.execution-detail-grid {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 10px;
+}
+
+.execution-detail-grid div {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px;
+}
+
+.execution-detail-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.execution-detail-grid strong {
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.execution-sql {
+  border-radius: 0;
+  border-width: 1px 0 0;
+  margin: 0;
+  max-height: 220px;
+}
+
+.execution-ref-list {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+.execution-ref-list span {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .route-button-grid {
   display: grid;
   gap: 8px;
@@ -1493,6 +1572,73 @@ button {
   accent-color: var(--primary);
   height: 18px;
   width: 18px;
+}
+
+.audit-log-card {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.audit-log-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.audit-log-header h3 {
+  color: var(--text);
+  font-size: 18px;
+  margin: 0;
+}
+
+.audit-log-header > span {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 9px;
+}
+
+.audit-log-list {
+  display: grid;
+  gap: 8px;
+}
+
+.audit-log-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+.audit-log-item div {
+  display: grid;
+  gap: 3px;
+}
+
+.audit-log-item strong {
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.audit-log-item span,
+.audit-log-item small,
+.audit-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.audit-empty {
+  margin: 0;
 }
 
 .control-footer {

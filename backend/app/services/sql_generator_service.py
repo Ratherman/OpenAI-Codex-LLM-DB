@@ -4,7 +4,7 @@ import re
 from openai import OpenAIError
 from pydantic import BaseModel, ValidationError
 
-from app.services.llm_service import create_openai_client, sanitize_error
+from app.services.llm_service import create_openai_client, extract_token_usage, sanitize_error
 
 SQL_GENERATOR_PROMPT = """
 你是安全的 MySQL SQL Generator。請只回傳 JSON object，不要加 Markdown。
@@ -32,6 +32,7 @@ class GeneratedSql(BaseModel):
     sql: str
     reason: str
     source: str = "openai"
+    usage: dict | None = None
 
 
 def parse_generated_sql(raw_text):
@@ -130,6 +131,7 @@ def generate_sql(api_key, question, model, schema_description):
         )
         generated = parse_generated_sql(response.output_text)
         generated.source = "openai"
+        generated.usage = extract_token_usage(response)
         return generated
     except (json.JSONDecodeError, ValidationError) as exc:
         return fallback_sql_for_question(question, f"SQL Generator 輸出不是合法 JSON，已使用 fallback：{exc}")

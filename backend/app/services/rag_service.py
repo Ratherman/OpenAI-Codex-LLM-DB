@@ -5,7 +5,8 @@ from openai import OpenAIError
 from sqlalchemy import select
 
 from app.models import KnowledgeChunk
-from app.services.llm_service import MissingOpenAIKeyError, create_openai_client, sanitize_error
+from app.services.audit_service import combine_usage
+from app.services.llm_service import MissingOpenAIKeyError, create_openai_client, extract_token_usage, sanitize_error
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_TOP_K = 3
@@ -57,7 +58,7 @@ def create_query_embedding(api_key, query, embedding_model=DEFAULT_EMBEDDING_MOD
     try:
         client = create_openai_client(api_key)
         response = client.embeddings.create(model=embedding_model, input=query)
-        return response.data[0].embedding
+        return response.data[0].embedding, extract_token_usage(response)
     except MissingOpenAIKeyError as exc:
         raise RagError(str(exc)) from exc
     except OpenAIError as exc:
@@ -123,7 +124,7 @@ def synthesize_rag_answer(api_key, query, refs, model, temperature=0.2):
             ],
             temperature=temperature,
         )
-        return response.output_text
+        return response.output_text, extract_token_usage(response)
     except OpenAIError as exc:
         raise RagError(f"RAG 回答整理失敗：{sanitize_error(exc, api_key)}") from exc
     except Exception as exc:
@@ -132,10 +133,10 @@ def synthesize_rag_answer(api_key, query, refs, model, temperature=0.2):
 
 def run_rag(session, api_key, query, model, temperature=0.2, top_k=DEFAULT_TOP_K):
     top_k = max(1, min(5, int(top_k or DEFAULT_TOP_K)))
-    query_embedding = create_query_embedding(api_key=api_key, query=query)
+    query_embedding, embedding_usage = create_query_embedding(api_key=api_key, query=query)
     scored_chunks = retrieve_top_chunks(session=session, query_embedding=query_embedding, top_k=top_k)
     refs = build_refs(scored_chunks)
-    answer = synthesize_rag_answer(
+    answer, answer_usage = synthesize_rag_answer(
         api_key=api_key,
         query=query,
         refs=refs,
@@ -149,4 +150,7 @@ def run_rag(session, api_key, query, model, temperature=0.2, top_k=DEFAULT_TOP_K
         "top_k": top_k,
         "refs": refs,
         "embedding_model": DEFAULT_EMBEDDING_MODEL,
+        "usage": combine_usage(embedding_usage, answer_usage),
+        "embedding_usage": embedding_usage,
+        "answer_usage": answer_usage,
     }

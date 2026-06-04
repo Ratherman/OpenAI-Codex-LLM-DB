@@ -30,6 +30,37 @@ def create_openai_client(api_key):
     return OpenAI(api_key=api_key, timeout=20.0)
 
 
+def _read_usage_value(usage, *names):
+    if not usage:
+        return None
+    if isinstance(usage, dict):
+        for name in names:
+            if usage.get(name) is not None:
+                return usage.get(name)
+        return None
+    for name in names:
+        value = getattr(usage, name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def extract_token_usage(response):
+    usage = getattr(response, "usage", None)
+    prompt_tokens = _read_usage_value(usage, "prompt_tokens", "input_tokens")
+    completion_tokens = _read_usage_value(usage, "completion_tokens", "output_tokens")
+    total_tokens = _read_usage_value(usage, "total_tokens")
+
+    if total_tokens is None and (prompt_tokens is not None or completion_tokens is not None):
+        total_tokens = int(prompt_tokens or 0) + int(completion_tokens or 0)
+
+    return {
+        "prompt_tokens": int(prompt_tokens) if prompt_tokens is not None else None,
+        "completion_tokens": int(completion_tokens) if completion_tokens is not None else None,
+        "total_tokens": int(total_tokens) if total_tokens is not None else None,
+    }
+
+
 def check_llm_health(api_key):
     masked_key = mask_api_key(api_key)
 
@@ -131,4 +162,5 @@ def generate_reply(api_key, message, model, system_prompt, temperature, history=
         "response_id": response.id,
         "memory_rounds": memory_rounds,
         "memory_message_count": len(selected_history),
+        "usage": extract_token_usage(response),
     }

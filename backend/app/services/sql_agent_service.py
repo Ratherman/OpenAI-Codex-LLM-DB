@@ -1,5 +1,6 @@
 from app.db import get_engine
 from app.services.answer_synthesizer_service import synthesize_answer
+from app.services.audit_service import combine_usage
 from app.services.schema_introspection_service import format_schema_for_prompt, get_schema_summary
 from app.services.sql_executor_service import SqlExecutionError, execute_select_sql
 from app.services.sql_generator_service import generate_sql
@@ -32,7 +33,7 @@ def run_sql_agent(api_key, question, model, temperature=0.2):
     except SqlExecutionError as exc:
         raise SqlAgentError(str(exc)) from exc
 
-    answer = synthesize_answer(
+    synthesized = synthesize_answer(
         api_key=api_key,
         question=question,
         sql=validation.sql,
@@ -44,7 +45,7 @@ def run_sql_agent(api_key, question, model, temperature=0.2):
 
     return {
         "route": "DB Query",
-        "answer": answer,
+        "answer": synthesized["answer"],
         "sql": validation.sql,
         "raw_sql": generated.sql,
         "generator_reason": generated.reason,
@@ -53,4 +54,7 @@ def run_sql_agent(api_key, question, model, temperature=0.2):
         "columns": query_result["columns"],
         "rows": query_result["rows"],
         "row_count": query_result["row_count"],
+        "usage": combine_usage(generated.usage, synthesized.get("usage")),
+        "generator_usage": generated.usage,
+        "answer_usage": synthesized.get("usage"),
     }

@@ -2,16 +2,17 @@ import json
 
 from openai import OpenAIError
 
-from app.services.llm_service import create_openai_client, sanitize_error
+from app.services.llm_service import create_openai_client, extract_token_usage, sanitize_error
 
 ANSWER_SYNTHESIZER_PROMPT = """
-你是 DB Agent Chat 的資料分析助理。請根據使用者問題、SQL、查詢結果，用繁體中文整理答案。
+你是 DB Agent Chat 的查詢結果整理器。
+請根據使用者問題、SQL、欄位與查詢結果，用繁體中文整理成容易閱讀的回答。
 
 規則：
-- 不要編造查詢結果裡沒有的資料。
-- 如果沒有資料，清楚說明沒有找到符合條件的資料。
-- 用精簡條列或短段落回答。
-- 金額請標示 TWD，必要時加上千分位。
+- 不要編造查詢結果中不存在的資料。
+- 如果查無資料，請清楚說明查無符合條件的資料。
+- 數字與金額請整理成容易閱讀的格式。
+- 可以用條列，但不要輸出冗長解釋。
 """.strip()
 
 
@@ -27,22 +28,22 @@ def fallback_answer(question, columns, rows):
     if not rows:
         return "查詢完成，但沒有找到符合條件的資料。"
 
-    lines = [f"查詢完成，共找到 {len(rows)} 筆資料。"]
+    lines = [f"查詢完成，共找到 {len(rows)} 筆資料："]
     preview_rows = rows[:8]
 
     for index, row in enumerate(preview_rows, start=1):
         parts = [f"{column}: {format_value(row.get(column))}" for column in columns]
-        lines.append(f"{index}. " + "，".join(parts))
+        lines.append(f"{index}. " + "；".join(parts))
 
     if len(rows) > len(preview_rows):
-        lines.append(f"其餘 {len(rows) - len(preview_rows)} 筆可在下方結果表格查看。")
+        lines.append(f"另外還有 {len(rows) - len(preview_rows)} 筆，可展開查詢結果表格查看。")
 
     return "\n".join(lines)
 
 
 def synthesize_answer(api_key, question, sql, columns, rows, model, temperature=0.2):
     if not api_key:
-        return fallback_answer(question, columns, rows)
+        return {"answer": fallback_answer(question, columns, rows), "usage": None, "source": "fallback"}
 
     try:
         client = create_openai_client(api_key)
@@ -65,8 +66,22 @@ def synthesize_answer(api_key, question, sql, columns, rows, model, temperature=
             ],
             temperature=temperature,
         )
-        return response.output_text
+        return {"answer": response.output_text, "usage": extract_token_usage(response), "source": "openai"}
     except OpenAIError as exc:
-        return f"{fallback_answer(question, columns, rows)}\n\nLLM 整理失敗，已使用基本摘要：{sanitize_error(exc, api_key)}"
+        return {
+            "answer": (
+                f"{fallback_answer(question, columns, rows)}\n\n"
+                f"LLM 整理失敗，已改用表格摘要：{sanitize_error(exc, api_key)}"
+            ),
+            "usage": None,
+            "source": "fallback",
+        }
     except Exception as exc:
-        return f"{fallback_answer(question, columns, rows)}\n\nLLM 整理失敗，已使用基本摘要：{sanitize_error(exc, api_key)}"
+        return {
+            "answer": (
+                f"{fallback_answer(question, columns, rows)}\n\n"
+                f"LLM 整理失敗，已改用表格摘要：{sanitize_error(exc, api_key)}"
+            ),
+            "usage": None,
+            "source": "fallback",
+        }

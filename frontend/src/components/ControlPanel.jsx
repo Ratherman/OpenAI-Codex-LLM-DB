@@ -11,6 +11,7 @@ const toggleFields = [
 
 function ControlPanel({
   collapsed,
+  auditLogs = [],
   dbSummary,
   llmHealth,
   mobileOpen,
@@ -232,6 +233,37 @@ function ControlPanel({
             </label>
           ))}
         </div>
+
+        {settings.enableAuditLog ? (
+          <section className="audit-log-card" aria-label="Audit Log">
+            <div className="audit-log-header">
+              <div>
+                <p className="panel-kicker">Audit</p>
+                <h3>執行紀錄</h3>
+              </div>
+              <span>{auditLogs.length}</span>
+            </div>
+            <div className="audit-log-list">
+              {auditLogs.length ? (
+                auditLogs.map((log) => (
+                  <article className="audit-log-item" key={log.id}>
+                    <div>
+                      <strong>#{log.id} {log.action_type}</strong>
+                      <span>{log.route || 'unknown'} · {log.model || '-'}</span>
+                    </div>
+                    <small>
+                      tokens {log.total_tokens ?? 0}
+                      {log.sql_text ? ' · SQL' : ''}
+                      {log.db_table ? ` · ${log.db_table}` : ''}
+                    </small>
+                  </article>
+                ))
+              ) : (
+                <p className="audit-empty">目前尚無 audit log。</p>
+              )}
+            </div>
+          </section>
+        ) : null}
       </div>
 
       <div className="control-footer">

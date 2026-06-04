@@ -5,7 +5,7 @@ from typing import Literal
 from openai import OpenAIError
 from pydantic import BaseModel, Field, ValidationError
 
-from app.services.llm_service import create_openai_client, sanitize_error
+from app.services.llm_service import create_openai_client, extract_token_usage, sanitize_error
 
 RouteName = Literal["general_chat", "db_query", "db_write", "rag", "image_skill"]
 
@@ -51,6 +51,7 @@ class RouterDecision(BaseModel):
     reason: str
     required_capability: str
     suggested_followup_question: str | None = None
+    usage: dict | None = None
 
 
 def normalize_route(route):
@@ -171,7 +172,9 @@ def route_message(api_key, message, model):
             input=[{"role": "user", "content": message}],
             temperature=0,
         )
-        return apply_keyword_guardrail(message, parse_router_json(response.output_text))
+        decision = apply_keyword_guardrail(message, parse_router_json(response.output_text))
+        decision.usage = extract_token_usage(response)
+        return decision
     except (json.JSONDecodeError, ValidationError) as exc:
         return keyword_fallback(message, f"Router 輸出不是合法 JSON，已使用 fallback：{exc}")
     except OpenAIError as exc:

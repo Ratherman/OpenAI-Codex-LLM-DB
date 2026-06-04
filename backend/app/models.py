@@ -114,11 +114,24 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    actor: Mapped[str] = mapped_column(String(120), nullable=False)
-    action: Mapped[str] = mapped_column(String(120), nullable=False)
-    target_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    room_id: Mapped[int | None] = mapped_column(ForeignKey("chat_rooms.id"), nullable=True)
+    action_type: Mapped[str] = mapped_column(String(120), nullable=False, default="system")
+    route: Mapped[str] = mapped_column(String(80), nullable=False, default="unknown")
+    model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    input_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    output_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sql_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    db_table: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    db_record_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    actor: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    action: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    target_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
     target_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    details: Mapped[str] = mapped_column(Text, nullable=False)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
 

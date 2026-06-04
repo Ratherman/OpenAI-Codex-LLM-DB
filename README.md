@@ -23,12 +23,51 @@
 - `GET /api/chat/rooms/:id/messages`
 - `POST /api/chat/rooms/:id/route`
 - `POST /api/chat/rooms/:id/messages`
+- `GET /api/chat/rooms/:id/audit-logs`
+- `POST /api/chat/rooms/:id/db-write/confirm`
+- `POST /api/chat/rooms/:id/db-write/cancel`
 - `POST /api/chat`
 - 前端可顯示 DB 連線狀態
 - 前端右側 Control Panel 可顯示資料庫摘要
 - 聊天室與訊息會寫入 MySQL，重新整理頁面後仍會保留
 - 前端選到的模型會送到後端並寫入 `metadata_json`
 - 第 7 階段已串接 OpenAI API；如果沒有 `OPENAI_API_KEY`，前端會顯示清楚錯誤
+- 第 14 階段加入 Audit Log、token usage 與安全檢查
+
+## Audit Log、Token 與安全邊界
+
+第 14 階段會把 Agent 的重要行為寫入 `audit_logs`，方便課堂示範每一步為什麼發生、用了哪個 route、是否產生 SQL、用了多少 token。
+
+目前會記錄：
+
+- Context Router 判斷
+- LLM 一般聊天
+- DB Query 產生與執行 SQL
+- DB Write 待確認與確認寫入
+- RAG retrieval
+- Image Skill 發票辨識
+- 發票或費用寫入
+- 危險操作拒絕
+
+前端右側 `Enable Audit Log` 開啟時會顯示本聊天室最近的 audit logs。聊天室上方會顯示本聊天室累計 token 總量。每則 assistant 回覆也可以展開「執行細節」，查看 route、model、SQL 或 REF、token usage 與 audit id。
+
+查詢本聊天室 audit logs：
+
+```powershell
+curl http://127.0.0.1:5000/api/chat/rooms/1/audit-logs
+```
+
+### 為什麼 DB Agent 需要安全邊界
+
+DB Agent 會把自然語言轉成資料庫操作，因此不能只相信 prompt。這個 demo 使用多層安全邊界：
+
+- DB Query 只能執行 `SELECT`，程式會拒絕 `INSERT`、`UPDATE`、`DELETE`、`DROP`、`ALTER`、`TRUNCATE`、`CREATE`。
+- SQL 不允許多語句，必須有 `LIMIT`，預設最多 50 筆。
+- DB Write 不讓 LLM 直接寫任意 SQL，只能走白名單工具 `create_expense_report` 與 `create_invoice`。
+- 寫入資料庫前一定要由使用者在前端按「確認寫入」。
+- 危險請求例如「刪除所有資料」、「忽略系統提示」、「直接 DROP TABLE」會被安全檢查拒絕並留下 audit log。
+
+這些限制讓系統適合教學：學生可以看到 AI 的推理與工具結果，但資料庫仍有明確邊界。
 
 ## Image Skill 圖片辨識
 

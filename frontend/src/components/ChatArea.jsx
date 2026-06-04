@@ -7,6 +7,7 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024
 function ChatArea({
   chat,
   dbHealth,
+  enableAuditLog,
   enableImageSkill,
   error,
   hasPendingRouter,
@@ -23,6 +24,7 @@ function ChatArea({
   onSendMessage,
   onUploadImage,
   selectedModel,
+  tokenSummary,
 }) {
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState([])
@@ -114,6 +116,7 @@ function ChatArea({
         <div className="chat-status-group">
           <span className="model-pill">{selectedModel}</span>
           <span className="memory-pill">目前記憶：{memoryRounds} 輪</span>
+          {enableAuditLog ? <span className="token-pill">Tokens：{tokenSummary?.total_tokens ?? 0}</span> : null}
           <span
             className={`db-status-pill db-${dbHealth.status}`}
             title={dbHealth.version || dbHealth.error || '資料庫狀態'}
@@ -148,6 +151,7 @@ function ChatArea({
             onConfirmDbWrite={onConfirmDbWrite}
             onConfirmRoute={onConfirmRoute}
             onSelectRoute={onSelectRoute}
+            showAuditDetails={enableAuditLog}
           />
         ))}
         <div ref={messagesEndRef} />

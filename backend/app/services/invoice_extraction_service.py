@@ -9,7 +9,7 @@ from typing import Any
 from openai import OpenAIError
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from app.services.llm_service import create_openai_client, sanitize_error
+from app.services.llm_service import create_openai_client, extract_token_usage, sanitize_error
 
 SKILL_PATH = Path(__file__).resolve().parents[1] / "skills" / "invoice_extraction" / "SKILL.md"
 DEFAULT_VISION_MODEL = "gpt-4o"
@@ -176,6 +176,7 @@ def extract_invoice_from_image(api_key, image, message, model, upload_folder):
             "model": normalize_vision_model(model),
             "extraction": extraction.model_dump(mode="json"),
             "response_id": getattr(response, "id", None),
+            "usage": extract_token_usage(response),
         }
     except (json.JSONDecodeError, ValidationError) as exc:
         raise InvoiceExtractionError(f"LLM 回傳的發票辨識結果格式不正確：{exc}") from exc
