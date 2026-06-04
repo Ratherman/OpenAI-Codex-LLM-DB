@@ -188,19 +188,7 @@ Codex，我現在要進入第 3 階段：先把聊天 UI 做出來，但還不�
 目標：使用事前環境準備的 MySQL 設定，讓後端能連 DB。
 
 ```text
-Codex，我現在要進入第 4 階段：加入 Docker MySQL 資料庫。
-
-請你在專案根目錄建立或更新 docker-compose.yml，使用 MySQL 8：
-
-- container_name: codex_db
-- port: 3306:3306
-- MYSQL_ROOT_PASSWORD: codex123
-- MYSQL_DATABASE: codex_demo
-- MYSQL_USER: codex_user
-- MYSQL_PASSWORD: codex_pass
-- volume: db_data:/var/lib/mysql
-
-接著請你更新 backend：
+請你更新 backend：
 
 1. 使用 SQLAlchemy 連線 MySQL。
 2. 使用 PyMySQL driver。
@@ -208,7 +196,7 @@ Codex，我現在要進入第 4 階段：加入 Docker MySQL 資料庫。
 4. 建立 .env.example，包含：
    - DATABASE_URL=mysql+pymysql://codex_user:codex_pass@127.0.0.1:3306/codex_demo
    - OPENAI_API_KEY=請填入你的 key
-   - OPENAI_MODEL=請填入可用模型
+
 5. 新增 GET /api/db/health：
    - 成功時回傳資料庫版本與連線狀態。
    - 失敗時回傳清楚的錯誤訊息。
@@ -219,7 +207,7 @@ Codex，我現在要進入第 4 階段：加入 Docker MySQL 資料庫。
    - docker compose logs db
    - 如何重啟後端。
 
-請你實際執行 docker compose up -d。如果 Docker 沒開，請把錯誤訊息整理到 README 的 troubleshooting。
+8. 讓回覆可以串接前端指定的語言模型
 ```
 
 驗收重點：

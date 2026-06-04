@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import ChatArea from './components/ChatArea.jsx'
 import ControlPanel from './components/ControlPanel.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import './App.css'
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:5000'
 
 const makeId = () =>
   globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -20,7 +22,7 @@ const createChat = (index) => ({
   messages: [
     createMessage(
       'system',
-      '你好，這裡是 DB Agent Chat。目前是 UI 階段，下一階段會開始串接後端與 LLM。',
+      '你好，這裡是 DB Agent Chat。目前前端會把模型設定送到後端，沒有 OpenAI API Key 時會使用後端 mock 回覆。',
     ),
   ],
 })
@@ -46,11 +48,46 @@ function App() {
   const [controlsCollapsed, setControlsCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false)
+  const [isSending, setIsSending] = useState(false)
+  const [dbHealth, setDbHealth] = useState({
+    status: 'checking',
+    version: '',
+    error: '',
+  })
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) ?? chats[0],
     [activeChatId, chats],
   )
+
+  const checkDbHealth = useCallback(async () => {
+    setDbHealth({ status: 'checking', version: '', error: '' })
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/db/health`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`)
+      }
+
+      setDbHealth({
+        status: 'online',
+        version: data.database?.version ?? '',
+        error: '',
+      })
+    } catch (error) {
+      setDbHealth({
+        status: 'offline',
+        version: '',
+        error: error instanceof Error ? error.message : 'Unknown database error',
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    checkDbHealth()
+  }, [checkDbHealth])
 
   const handleCreateChat = () => {
     const chat = createChat(chats.length + 1)
@@ -83,23 +120,57 @@ function App() {
     setMobileSidebarOpen(false)
   }
 
-  const handleSendMessage = (content) => {
-    const text = content.trim()
-    if (!text || !activeChat) return
-
-    const userMessage = createMessage('user', text)
-    const systemMessage = createMessage(
-      'system',
-      `我收到你的訊息了：${text}。下一階段會串接後端與 LLM。`,
-    )
-
+  const appendMessage = (chatId, message) => {
     setChats((current) =>
       current.map((chat) =>
-        chat.id === activeChat.id
-          ? { ...chat, messages: [...chat.messages, userMessage, systemMessage] }
-          : chat,
+        chat.id === chatId ? { ...chat, messages: [...chat.messages, message] } : chat,
       ),
     )
+  }
+
+  const handleSendMessage = async (content) => {
+    const text = content.trim()
+    if (!text || !activeChat || isSending) return
+
+    const targetChatId = activeChat.id
+    appendMessage(targetChatId, createMessage('user', text))
+    setIsSending(true)
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: text,
+          model: settings.model,
+          temperature: settings.temperature,
+          systemPrompt: settings.systemPrompt,
+          memoryRounds: settings.memoryRounds,
+          enableContextRouter: settings.enableContextRouter,
+          enableDbQuery: settings.enableDbQuery,
+          enableRag: settings.enableRag,
+          enableImageSkill: settings.enableImageSkill,
+          enableAuditLog: settings.enableAuditLog,
+        }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`)
+      }
+
+      appendMessage(targetChatId, createMessage('system', data.message))
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? `後端回覆失敗：${error.message}`
+          : '後端回覆失敗：Unknown error'
+      appendMessage(targetChatId, createMessage('system', message))
+    } finally {
+      setIsSending(false)
+    }
   }
 
   const handleSettingChange = (key, value) => {
@@ -146,8 +217,12 @@ function App() {
 
       <ChatArea
         chat={activeChat}
+        dbHealth={dbHealth}
+        isSending={isSending}
+        selectedModel={settings.model}
         onOpenControls={() => setMobileControlsOpen(true)}
         onOpenSidebar={() => setMobileSidebarOpen(true)}
+        onRefreshDbHealth={checkDbHealth}
         onSendMessage={handleSendMessage}
       />
 

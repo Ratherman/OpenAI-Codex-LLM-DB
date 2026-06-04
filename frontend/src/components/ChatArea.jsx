@@ -1,8 +1,17 @@
-import { ImagePlus, Menu, Send, SlidersHorizontal } from 'lucide-react'
+import { Database, ImagePlus, Menu, RefreshCw, Send, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import MessageBubble from './MessageBubble.jsx'
 
-function ChatArea({ chat, onOpenControls, onOpenSidebar, onSendMessage }) {
+function ChatArea({
+  chat,
+  dbHealth,
+  isSending,
+  onOpenControls,
+  onOpenSidebar,
+  onRefreshDbHealth,
+  onSendMessage,
+  selectedModel,
+}) {
   const [draft, setDraft] = useState('')
   const messagesEndRef = useRef(null)
 
@@ -12,11 +21,17 @@ function ChatArea({ chat, onOpenControls, onOpenSidebar, onSendMessage }) {
 
   const submitMessage = (event) => {
     event.preventDefault()
-    if (!draft.trim()) return
+    if (!draft.trim() || isSending) return
 
     onSendMessage(draft)
     setDraft('')
   }
+
+  const dbLabel = {
+    checking: 'DB 檢查中',
+    online: 'DB 已連線',
+    offline: 'DB 未連線',
+  }[dbHealth.status]
 
   return (
     <main className="chat-area">
@@ -47,7 +62,25 @@ function ChatArea({ chat, onOpenControls, onOpenSidebar, onSendMessage }) {
           <p className="panel-kicker">DB Agent Chat</p>
           <h1>{chat?.title ?? '聊天室'}</h1>
         </div>
-        <span className="stage-badge">UI Prototype</span>
+        <div className="chat-status-group">
+          <span className="model-pill">{selectedModel}</span>
+          <span
+            className={`db-status-pill db-${dbHealth.status}`}
+            title={dbHealth.version || dbHealth.error || '資料庫連線狀態'}
+          >
+            <Database size={16} />
+            {dbLabel}
+          </span>
+          <button
+            aria-label="重新檢查資料庫連線"
+            className="icon-button"
+            title="重新檢查資料庫連線"
+            type="button"
+            onClick={onRefreshDbHealth}
+          >
+            <RefreshCw size={17} />
+          </button>
+        </div>
       </section>
 
       <section aria-label="聊天訊息" className="message-list">
@@ -83,8 +116,14 @@ function ChatArea({ chat, onOpenControls, onOpenSidebar, onSendMessage }) {
               }
             }}
           />
-          <button aria-label="送出訊息" className="send-button" title="送出訊息" type="submit">
-            <Send size={20} />
+          <button
+            aria-label="送出訊息"
+            className="send-button"
+            disabled={isSending}
+            title="送出訊息"
+            type="submit"
+          >
+            {isSending ? <RefreshCw className="spin" size={20} /> : <Send size={20} />}
           </button>
         </div>
       </form>
