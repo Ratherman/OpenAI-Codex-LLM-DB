@@ -14,10 +14,18 @@
 - `GET /api/employees`
 - `GET /api/expenses`
 - `GET /api/invoices`
+- `POST /api/chat/rooms`
+- `GET /api/chat/rooms`
+- `PATCH /api/chat/rooms/:id`
+- `DELETE /api/chat/rooms/:id`
+- `GET /api/chat/rooms/:id/messages`
+- `POST /api/chat/rooms/:id/messages`
 - `POST /api/chat`
 - 前端可顯示 DB 連線狀態
 - 前端右側 Control Panel 可顯示資料庫摘要
-- 前端選到的模型會送到後端，後端可依 `.env` 的 `OPENAI_API_KEY` 決定 mock 或呼叫 OpenAI
+- 聊天室與訊息會寫入 MySQL，重新整理頁面後仍會保留
+- 前端選到的模型會送到後端並寫入 `metadata_json`
+- 第 6 階段尚未串 OpenAI，後端先回 mock 訊息
 
 ## 專案結構
 
@@ -226,7 +234,72 @@ $env:VITE_API_BASE_URL="http://127.0.0.1:5000"
 npm run dev
 ```
 
-## Chat API
+## Chat Rooms API
+
+第 6 階段開始，前端聊天室與訊息都改由後端 API + MySQL 保存。
+
+建立聊天室：
+
+```powershell
+curl -X POST http://127.0.0.1:5000/api/chat/rooms `
+  -H "Content-Type: application/json" `
+  -d "{\"title\":\"Demo Room\"}"
+```
+
+取得聊天室列表：
+
+```powershell
+curl http://127.0.0.1:5000/api/chat/rooms
+```
+
+修改聊天室名稱：
+
+```powershell
+curl -X PATCH http://127.0.0.1:5000/api/chat/rooms/1 `
+  -H "Content-Type: application/json" `
+  -d "{\"title\":\"Renamed Room\"}"
+```
+
+刪除聊天室與訊息：
+
+```powershell
+curl -X DELETE http://127.0.0.1:5000/api/chat/rooms/1
+```
+
+取得聊天室訊息：
+
+```powershell
+curl http://127.0.0.1:5000/api/chat/rooms/1/messages
+```
+
+送出使用者訊息：
+
+```powershell
+curl -X POST http://127.0.0.1:5000/api/chat/rooms/1/messages `
+  -H "Content-Type: application/json" `
+  -d "{\"message\":\"hello\",\"model\":\"gpt-4o\",\"temperature\":0.3}"
+```
+
+這一階段尚未串接 OpenAI。後端會先寫入：
+
+- `user` 訊息
+- `assistant` mock 回覆
+
+mock 回覆格式：
+
+```text
+後端已收到你的訊息：{message}。下一階段會由 LLM 回覆。
+```
+
+`chat_messages` 會保存：
+
+- `room_id`
+- `role`
+- `content`
+- `metadata_json`
+- `created_at`
+
+## Legacy Chat API
 
 前端送出訊息時會呼叫：
 
@@ -234,7 +307,9 @@ npm run dev
 POST /api/chat
 ```
 
-會帶入右側設定面板的：
+舊版 API 仍保留作為相容入口，但目前第 6 階段的前端已改用 `/api/chat/rooms/:id/messages`。舊版 API 這一階段也只回 mock，不會呼叫 OpenAI。
+
+前端送出訊息到聊天室 API 時會帶入右側設定面板的：
 
 - `model`
 - `temperature`
@@ -242,4 +317,4 @@ POST /api/chat
 - `memoryRounds`
 - Context Router / DB Query / RAG / Image Skill / Audit Log 開關
 
-如果 `.env` 有有效的 `OPENAI_API_KEY`，後端會使用前端指定的 `model` 呼叫 OpenAI。沒有 key 時會使用 mock 回覆，方便課程階段先驗證前後端串接。
+下一階段要串接 LLM 時，可以在 `POST /api/chat/rooms/:id/messages` 內改成呼叫 OpenAI，再把 assistant 回覆寫回 `chat_messages`。

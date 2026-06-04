@@ -5,6 +5,8 @@ import MessageBubble from './MessageBubble.jsx'
 function ChatArea({
   chat,
   dbHealth,
+  error,
+  isLoadingMessages,
   isSending,
   onOpenControls,
   onOpenSidebar,
@@ -21,7 +23,7 @@ function ChatArea({
 
   const submitMessage = (event) => {
     event.preventDefault()
-    if (!draft.trim() || isSending) return
+    if (!draft.trim() || isSending || !chat) return
 
     onSendMessage(draft)
     setDraft('')
@@ -84,6 +86,12 @@ function ChatArea({
       </section>
 
       <section aria-label="聊天訊息" className="message-list">
+        {isLoadingMessages ? <p className="status-note">載入訊息中...</p> : null}
+        {error ? <p className="error-banner">{error}</p> : null}
+        {!chat && !isLoadingMessages ? <p className="empty-state">請先新增或選擇聊天室。</p> : null}
+        {chat && !isLoadingMessages && chat.messages.length === 0 ? (
+          <p className="empty-state">這個聊天室還沒有訊息。</p>
+        ) : null}
         {chat?.messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}
@@ -109,6 +117,7 @@ function ChatArea({
             placeholder="輸入訊息..."
             rows={2}
             value={draft}
+            disabled={!chat || isSending}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
@@ -119,7 +128,7 @@ function ChatArea({
           <button
             aria-label="送出訊息"
             className="send-button"
-            disabled={isSending}
+            disabled={!chat || isSending}
             title="送出訊息"
             type="submit"
           >

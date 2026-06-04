@@ -1,4 +1,5 @@
 import sys
+import json
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -175,8 +176,18 @@ def seed_chat_and_audit(session):
     session.flush()
     session.add_all(
         [
-            ChatMessage(room_id=room.id, role="user", content="Show me employee expense summary.", model="gpt-4o"),
-            ChatMessage(room_id=room.id, role="assistant", content="I can query seeded expense data after SQL Agent is enabled.", model="gpt-4o"),
+            ChatMessage(
+                room_id=room.id,
+                role="user",
+                content="Show me employee expense summary.",
+                metadata_json=json.dumps({"model": "gpt-4o", "source": "seed"}),
+            ),
+            ChatMessage(
+                room_id=room.id,
+                role="assistant",
+                content="I can query seeded expense data after SQL Agent is enabled.",
+                metadata_json=json.dumps({"model": "gpt-4o", "provider": "seed"}),
+            ),
             AuditLog(actor="system", action="init_db", target_type="database", target_id=None, details="Created classroom demo tables."),
             AuditLog(actor="system", action="seed_db", target_type="database", target_id=None, details="Seeded company operations demo data."),
         ]

@@ -5,6 +5,8 @@ function Sidebar({
   activeChatId,
   chats,
   collapsed,
+  error,
+  isLoading,
   mobileOpen,
   theme,
   onCloseMobile,
@@ -75,10 +77,13 @@ function Sidebar({
         </div>
       </div>
 
-      <button className="new-chat-button" type="button" onClick={onCreateChat}>
+      <button className="new-chat-button" disabled={isLoading} type="button" onClick={onCreateChat}>
         <Plus size={18} />
         新增聊天室
       </button>
+
+      {isLoading ? <p className="sidebar-status">載入聊天室...</p> : null}
+      {error ? <p className="sidebar-error">{error}</p> : null}
 
       <nav aria-label="聊天室列表" className="chat-list">
         {chats.map((chat) => {
@@ -123,7 +128,7 @@ function Sidebar({
                     onClick={() => onSelectChat(chat.id)}
                   >
                     <span>{chat.title}</span>
-                    <small>{chat.messages.length} 則訊息</small>
+                    <small>{chat.message_count ?? chat.messages?.length ?? 0} 則訊息</small>
                   </button>
                   <div className="chat-actions">
                     <button
@@ -150,6 +155,9 @@ function Sidebar({
             </div>
           )
         })}
+        {!isLoading && chats.length === 0 ? (
+          <p className="sidebar-status">尚無聊天室，請新增一個開始對話。</p>
+        ) : null}
       </nav>
 
       <div className="sidebar-footer">

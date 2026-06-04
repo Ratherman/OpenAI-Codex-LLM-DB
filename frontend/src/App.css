@@ -202,6 +202,32 @@ button {
   background: var(--primary-strong);
 }
 
+.new-chat-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.sidebar-status,
+.sidebar-error {
+  border-radius: 8px;
+  font-size: 13px;
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+  padding: 10px;
+}
+
+.sidebar-status {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.sidebar-error {
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 36%, transparent);
+  color: var(--danger);
+}
+
 .chat-list {
   display: grid;
   gap: 10px;
@@ -380,6 +406,31 @@ button {
   min-height: 0;
   overflow: auto;
   padding: 28px;
+}
+
+.status-note,
+.empty-state,
+.error-banner {
+  align-self: center;
+  border-radius: 8px;
+  margin: auto 0;
+  max-width: 520px;
+  overflow-wrap: anywhere;
+  padding: 14px 16px;
+  text-align: center;
+}
+
+.status-note,
+.empty-state {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.error-banner {
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 36%, transparent);
+  color: var(--danger);
 }
 
 .message-row {

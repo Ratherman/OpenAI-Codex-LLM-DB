@@ -91,7 +91,10 @@ class ChatRoom(Base):
         onupdate=datetime.utcnow,
     )
 
-    messages: Mapped[list["ChatMessage"]] = relationship(back_populates="room")
+    messages: Mapped[list["ChatMessage"]] = relationship(
+        back_populates="room",
+        cascade="all, delete-orphan",
+    )
 
 
 class ChatMessage(Base):
@@ -101,7 +104,7 @@ class ChatMessage(Base):
     room_id: Mapped[int] = mapped_column(ForeignKey("chat_rooms.id"), nullable=False)
     role: Mapped[str] = mapped_column(String(40), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    model: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     room: Mapped[ChatRoom] = relationship(back_populates="messages")
