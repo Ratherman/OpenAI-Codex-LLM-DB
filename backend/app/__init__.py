@@ -8,6 +8,7 @@ from app.routes.chat_rooms import chat_rooms_bp
 from app.routes.company_data import company_data_bp
 from app.routes.db_health import db_health_bp
 from app.routes.health import health_bp
+from app.routes.llm_health import llm_health_bp
 
 
 def create_app():
@@ -21,5 +22,6 @@ def create_app():
     app.register_blueprint(company_data_bp)
     app.register_blueprint(db_health_bp)
     app.register_blueprint(health_bp)
+    app.register_blueprint(llm_health_bp)
 
     return app

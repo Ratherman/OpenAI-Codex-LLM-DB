@@ -1,12 +1,13 @@
 import json
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import get_session
 from app.models import ChatMessage, ChatRoom
+from app.services.llm_service import MissingOpenAIKeyError, generate_reply, sanitize_error
 
 chat_rooms_bp = Blueprint("chat_rooms", __name__)
 
@@ -173,6 +174,14 @@ def create_chat_room_message(room_id):
     payload = request.get_json(silent=True) or {}
     content = str(payload.get("message", "")).strip()
     model = str(payload.get("model", "gpt-4o")).strip() or "gpt-4o"
+    system_prompt = str(payload.get("systemPrompt", "")).strip()
+
+    try:
+        temperature = float(payload.get("temperature", 0.3))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "error": "temperature must be a number"}), 400
+
+    temperature = max(0, min(1, temperature))
 
     if not content:
         return jsonify({"status": "error", "error": "message is required"}), 400
@@ -183,6 +192,13 @@ def create_chat_room_message(room_id):
         if error_response:
             return error_response
 
+        history = list(
+            session.execute(
+                select(ChatMessage)
+                .where(ChatMessage.room_id == room.id)
+                .order_by(ChatMessage.created_at, ChatMessage.id)
+            ).scalars()
+        )
         user_message = ChatMessage(
             room_id=room.id,
             role="user",
@@ -196,29 +212,66 @@ def create_chat_room_message(room_id):
                 ensure_ascii=False,
             ),
         )
+        room.updated_at = datetime.utcnow()
+        session.add(user_message)
+        session.flush()
+
+        status = "ok"
+        llm_error = ""
+        try:
+            llm_result = generate_reply(
+                api_key=current_app.config["OPENAI_API_KEY"],
+                message=content,
+                model=model,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                history=history,
+            )
+            assistant_content = llm_result["message"]
+            assistant_metadata = {
+                "model": llm_result["model"],
+                "provider": llm_result["provider"],
+                "response_id": llm_result.get("response_id"),
+                "source": "openai",
+            }
+        except MissingOpenAIKeyError as exc:
+            status = "llm_error"
+            llm_error = str(exc)
+            assistant_content = f"LLM 尚未啟用：{llm_error}"
+            assistant_metadata = {
+                "model": model,
+                "provider": "openai",
+                "error": llm_error,
+                "source": "api",
+            }
+        except Exception as exc:
+            status = "llm_error"
+            llm_error = sanitize_error(exc, current_app.config["OPENAI_API_KEY"])
+            assistant_content = f"LLM 回覆失敗：{llm_error}"
+            assistant_metadata = {
+                "model": model,
+                "provider": "openai",
+                "error": llm_error,
+                "source": "api",
+            }
+
         assistant_message = ChatMessage(
             room_id=room.id,
             role="assistant",
-            content=f"後端已收到你的訊息：{content}。下一階段會由 LLM 回覆。",
-            metadata_json=json.dumps(
-                {
-                    "model": model,
-                    "provider": "backend_mock",
-                    "source": "api",
-                },
-                ensure_ascii=False,
-            ),
+            content=assistant_content,
+            metadata_json=json.dumps(assistant_metadata, ensure_ascii=False),
         )
         room.updated_at = datetime.utcnow()
-        session.add_all([user_message, assistant_message])
+        session.add(assistant_message)
         session.commit()
 
         return (
             jsonify(
                 {
-                    "status": "ok",
+                    "status": status,
                     "room": serialize_room(room),
                     "messages": [serialize_message(user_message), serialize_message(assistant_message)],
+                    "llm_error": llm_error,
                 }
             ),
             201,

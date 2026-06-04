@@ -14,6 +14,7 @@
 - `GET /api/employees`
 - `GET /api/expenses`
 - `GET /api/invoices`
+- `GET /api/llm/health`
 - `POST /api/chat/rooms`
 - `GET /api/chat/rooms`
 - `PATCH /api/chat/rooms/:id`
@@ -25,7 +26,7 @@
 - 前端右側 Control Panel 可顯示資料庫摘要
 - 聊天室與訊息會寫入 MySQL，重新整理頁面後仍會保留
 - 前端選到的模型會送到後端並寫入 `metadata_json`
-- 第 6 階段尚未串 OpenAI，後端先回 mock 訊息
+- 第 7 階段已串接 OpenAI API；如果沒有 `OPENAI_API_KEY`，前端會顯示清楚錯誤
 
 ## 專案結構
 
@@ -73,7 +74,13 @@ DATABASE_URL=mysql+pymysql://codex_user:codex_pass@127.0.0.1:3306/codex_demo
 OPENAI_API_KEY=請填入你的 key
 ```
 
-如果暫時沒有 OpenAI API Key，可以先留空或保留範例文字。後端會先用 mock 回覆。
+如果暫時沒有 OpenAI API Key，可以先留空或保留範例文字。後端會回傳清楚的 LLM 未啟用提示，不會讓前端畫面壞掉。
+
+安全提醒：
+
+- 不要把真實 API Key 寫進 README、程式碼或 `.env.example`
+- 真實 key 只放在本機 `.env`
+- `.env` 已被 `.gitignore` 排除
 
 ## 啟動 MySQL
 
@@ -236,7 +243,7 @@ npm run dev
 
 ## Chat Rooms API
 
-第 6 階段開始，前端聊天室與訊息都改由後端 API + MySQL 保存。
+第 6 階段開始，前端聊天室與訊息都改由後端 API + MySQL 保存。第 7 階段開始，送出訊息時會使用 OpenAI API 產生 assistant 回覆。
 
 建立聊天室：
 
@@ -280,15 +287,15 @@ curl -X POST http://127.0.0.1:5000/api/chat/rooms/1/messages `
   -d "{\"message\":\"hello\",\"model\":\"gpt-4o\",\"temperature\":0.3}"
 ```
 
-這一階段尚未串接 OpenAI。後端會先寫入：
+後端會寫入：
 
 - `user` 訊息
-- `assistant` mock 回覆
+- `assistant` LLM 回覆，或在 API key 缺失 / API 呼叫失敗時寫入清楚錯誤訊息
 
-mock 回覆格式：
+如果沒有設定 `OPENAI_API_KEY`，assistant 會回覆類似：
 
 ```text
-後端已收到你的訊息：{message}。下一階段會由 LLM 回覆。
+LLM 尚未啟用：OPENAI_API_KEY is not configured. Please set it in .env and restart the backend.
 ```
 
 `chat_messages` 會保存：
@@ -299,6 +306,27 @@ mock 回覆格式：
 - `metadata_json`
 - `created_at`
 
+## LLM Health API
+
+檢查 OpenAI API key 是否存在，以及 API 是否可連線：
+
+```powershell
+curl http://127.0.0.1:5000/api/llm/health
+```
+
+成功時只會回傳遮罩後的 key，例如：
+
+```json
+{
+  "status": "ok",
+  "configured": true,
+  "api_reachable": true,
+  "key_masked": "sk-...abcd"
+}
+```
+
+不會回傳完整 API Key。
+
 ## Legacy Chat API
 
 前端送出訊息時會呼叫：
@@ -307,7 +335,7 @@ mock 回覆格式：
 POST /api/chat
 ```
 
-舊版 API 仍保留作為相容入口，但目前第 6 階段的前端已改用 `/api/chat/rooms/:id/messages`。舊版 API 這一階段也只回 mock，不會呼叫 OpenAI。
+舊版 API 仍保留作為相容入口，但目前前端已改用 `/api/chat/rooms/:id/messages`。
 
 前端送出訊息到聊天室 API 時會帶入右側設定面板的：
 
@@ -317,4 +345,4 @@ POST /api/chat
 - `memoryRounds`
 - Context Router / DB Query / RAG / Image Skill / Audit Log 開關
 
-下一階段要串接 LLM 時，可以在 `POST /api/chat/rooms/:id/messages` 內改成呼叫 OpenAI，再把 assistant 回覆寫回 `chat_messages`。
+`POST /api/chat/rooms/:id/messages` 會呼叫 OpenAI，並把 assistant 回覆寫回 `chat_messages`。

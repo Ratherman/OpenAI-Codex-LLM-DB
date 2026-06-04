@@ -6,6 +6,19 @@ import './App.css'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:5000'
 
+const makeTempId = (prefix) =>
+  `temp-${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`
+
+const createTemporaryMessage = (roomId, role, content, metadata = {}) => ({
+  id: makeTempId(role),
+  room_id: roomId,
+  role,
+  content,
+  metadata,
+  metadata_json: JSON.stringify(metadata),
+  created_at: new Date().toISOString(),
+})
+
 const defaultSettings = {
   model: 'gpt-4o',
   temperature: 0.3,
@@ -53,6 +66,13 @@ function App() {
   const [dbSummary, setDbSummary] = useState({
     status: 'checking',
     data: null,
+    error: '',
+  })
+  const [llmHealth, setLlmHealth] = useState({
+    status: 'checking',
+    configured: false,
+    apiReachable: false,
+    keyMasked: '',
     error: '',
   })
 
@@ -142,11 +162,43 @@ function App() {
     }
   }, [])
 
+  const checkLlmHealth = useCallback(async () => {
+    setLlmHealth({
+      status: 'checking',
+      configured: false,
+      apiReachable: false,
+      keyMasked: '',
+      error: '',
+    })
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/llm/health`)
+      const data = await response.json()
+
+      setLlmHealth({
+        status: response.ok ? 'online' : 'offline',
+        configured: Boolean(data.configured),
+        apiReachable: Boolean(data.api_reachable),
+        keyMasked: data.key_masked ?? '',
+        error: response.ok ? '' : data.error || `HTTP ${response.status}`,
+      })
+    } catch (error) {
+      setLlmHealth({
+        status: 'offline',
+        configured: false,
+        apiReachable: false,
+        keyMasked: '',
+        error: error instanceof Error ? error.message : 'LLM health check failed',
+      })
+    }
+  }, [])
+
   useEffect(() => {
     loadRooms()
     checkDbHealth()
     checkDbSummary()
-  }, [checkDbHealth, checkDbSummary, loadRooms])
+    checkLlmHealth()
+  }, [checkDbHealth, checkDbSummary, checkLlmHealth, loadRooms])
 
   useEffect(() => {
     loadMessages(activeRoomId)
@@ -208,11 +260,23 @@ function App() {
     const text = content.trim()
     if (!text || !activeRoom || isSending) return
 
+    const targetRoomId = activeRoom.id
+    const optimisticUserMessage = createTemporaryMessage(targetRoomId, 'user', text, {
+      source: 'frontend_optimistic',
+    })
+    const loadingAssistantMessage = {
+      ...createTemporaryMessage(targetRoomId, 'assistant', '正在等待 LLM 回覆...', {
+        source: 'frontend_loading',
+      }),
+      status: 'loading',
+    }
+
     setActionError('')
     setIsSending(true)
+    setMessages((current) => [...current, optimisticUserMessage, loadingAssistantMessage])
 
     try {
-      const data = await apiRequest(`/api/chat/rooms/${activeRoom.id}/messages`, {
+      const data = await apiRequest(`/api/chat/rooms/${targetRoomId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -229,10 +293,31 @@ function App() {
         }),
       })
 
-      setMessages((current) => [...current, ...(data.messages ?? [])])
-      await loadRooms(activeRoom.id)
+      const persistedMessages = data.messages ?? []
+      setMessages((current) => [
+        ...current.filter(
+          (message) =>
+            message.id !== optimisticUserMessage.id && message.id !== loadingAssistantMessage.id,
+        ),
+        ...persistedMessages,
+      ])
+      await loadRooms(targetRoomId)
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : '送出訊息失敗')
+      const errorMessage = error instanceof Error ? error.message : '送出訊息失敗'
+      setActionError(errorMessage)
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === loadingAssistantMessage.id
+            ? {
+                ...message,
+                status: 'error',
+                content: `LLM 回覆失敗：${errorMessage}`,
+                metadata: { source: 'frontend_error', error: errorMessage },
+                metadata_json: JSON.stringify({ source: 'frontend_error', error: errorMessage }),
+              }
+            : message,
+        ),
+      )
     } finally {
       setIsSending(false)
     }
@@ -298,10 +383,12 @@ function App() {
       <ControlPanel
         collapsed={controlsCollapsed}
         dbSummary={dbSummary}
+        llmHealth={llmHealth}
         mobileOpen={mobileControlsOpen}
         settings={settings}
         onChange={handleSettingChange}
         onCloseMobile={() => setMobileControlsOpen(false)}
+        onRefreshLlmHealth={checkLlmHealth}
         onRefreshSummary={checkDbSummary}
         onToggleCollapse={() => setControlsCollapsed((current) => !current)}
       />

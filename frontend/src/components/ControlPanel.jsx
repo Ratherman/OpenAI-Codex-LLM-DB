@@ -11,10 +11,12 @@ const toggleFields = [
 function ControlPanel({
   collapsed,
   dbSummary,
+  llmHealth,
   mobileOpen,
   settings,
   onChange,
   onCloseMobile,
+  onRefreshLlmHealth,
   onRefreshSummary,
   onToggleCollapse,
 }) {
@@ -116,13 +118,51 @@ function ControlPanel({
           )}
         </section>
 
+        <section className="llm-health-card" aria-label="LLM health">
+          <div className="db-summary-header">
+            <div>
+              <p className="panel-kicker">LLM</p>
+              <h3>OpenAI 狀態</h3>
+            </div>
+            <button
+              aria-label="重新檢查 LLM 狀態"
+              className="icon-button"
+              title="重新檢查 LLM 狀態"
+              type="button"
+              onClick={onRefreshLlmHealth}
+            >
+              <RefreshCw size={17} />
+            </button>
+          </div>
+          <div className="health-stack">
+            <div className={`health-row health-${llmHealth.status}`}>
+              <span>API Key</span>
+              <strong>{llmHealth.configured ? '已設定' : '未設定'}</strong>
+            </div>
+            <div className="health-row">
+              <span>Masked Key</span>
+              <strong>{llmHealth.keyMasked || '-'}</strong>
+            </div>
+            <div className={`health-row health-${llmHealth.status}`}>
+              <span>API</span>
+              <strong>{llmHealth.apiReachable ? '可連線' : '未確認'}</strong>
+            </div>
+          </div>
+          {llmHealth.error ? <p className="summary-error">{llmHealth.error}</p> : null}
+        </section>
+
         <label className="field">
           <span>模型選擇</span>
-          <select value={settings.model} onChange={(event) => onChange('model', event.target.value)}>
-            <option value="gpt-4o">gpt-4o</option>
-            <option value="gpt-5.4">gpt-5.4</option>
-            <option value="gpt-5.5">gpt-5.5</option>
-          </select>
+          <input
+            list="model-options"
+            value={settings.model}
+            onChange={(event) => onChange('model', event.target.value)}
+          />
+          <datalist id="model-options">
+            <option value="gpt-4o" />
+            <option value="gpt-5.4" />
+            <option value="gpt-5.5" />
+          </datalist>
         </label>
 
         <label className="field">
