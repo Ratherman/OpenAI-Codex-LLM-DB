@@ -446,6 +446,8 @@ def confirm_db_write(session, pending_write, actor="user"):
                 "tool": tool,
                 "fields": pending_write.get("fields"),
                 "resolved": pending_write.get("resolved"),
+                "origin": pending_write.get("origin"),
+                "image": pending_write.get("image"),
             },
             ensure_ascii=False,
         ),

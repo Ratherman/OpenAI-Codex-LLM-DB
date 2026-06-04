@@ -1,3 +1,5 @@
+import { X } from 'lucide-react'
+import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -86,15 +88,11 @@ function RouterDecisionCard({ message, onConfirmRoute, onSelectRoute }) {
       </div>
 
       {isPending ? (
-        <button
-          className="confirm-route-button"
-          type="button"
-          onClick={() => onConfirmRoute?.(message.id)}
-        >
+        <button className="confirm-route-button" type="button" onClick={() => onConfirmRoute?.(message.id)}>
           確認執行
         </button>
       ) : (
-        <p className="router-confirmed-note">已使用 {selectedRoute} 執行。</p>
+        <p className="router-confirmed-note">已用 {selectedRoute} 執行。</p>
       )}
     </div>
   )
@@ -112,7 +110,7 @@ function KeyValueGrid({ data }) {
       {entries.map(([key, value]) => (
         <div key={key}>
           <span>{key}</span>
-          <strong>{String(value)}</strong>
+          <strong>{typeof value === 'object' ? JSON.stringify(value) : String(value)}</strong>
         </div>
       ))}
     </div>
@@ -134,16 +132,14 @@ function DbWritePanel({ dbWrite, message, onCancelDbWrite, onConfirmDbWrite }) {
         {status === 'missing_fields'
           ? '必要欄位不足'
           : status === 'confirmed'
-            ? `已寫入 ID ${dbWrite.record_id ?? '-'}`
+            ? `已寫入：ID ${dbWrite.record_id ?? '-'}`
             : status === 'canceled'
               ? '已取消'
               : '待確認寫入'}
       </p>
 
       {dbWrite.missing_fields?.length ? (
-        <div className="db-write-warning">
-          缺少欄位：{dbWrite.missing_fields.join('、')}
-        </div>
+        <div className="db-write-warning">缺少欄位：{dbWrite.missing_fields.join('、')}</div>
       ) : null}
 
       {dbWrite.warnings?.length ? (
@@ -158,7 +154,7 @@ function DbWritePanel({ dbWrite, message, onCancelDbWrite, onConfirmDbWrite }) {
 
       {dbWrite.resolved ? (
         <details className="db-write-details">
-          <summary>解析到的資料庫關聯</summary>
+          <summary>解析到的關聯資料</summary>
           <KeyValueGrid data={dbWrite.resolved} />
         </details>
       ) : null}
@@ -183,7 +179,7 @@ function SqlResultTable({ columns, rows }) {
   }
 
   if (!rows?.length) {
-    return <p className="sql-empty-note">查詢結果為空。</p>
+    return <p className="sql-empty-note">查無資料。</p>
   }
 
   return (
@@ -234,7 +230,7 @@ function SqlAgentPanel({ sqlAgent }) {
       </details>
 
       <details className="sql-agent-details">
-        <summary>查詢結果表格（{sqlAgent.row_count ?? sqlAgent.rows?.length ?? 0} 筆）</summary>
+        <summary>查詢結果表格：{sqlAgent.row_count ?? sqlAgent.rows?.length ?? 0} 筆</summary>
         <SqlResultTable columns={sqlAgent.columns} rows={sqlAgent.rows} />
       </details>
     </div>
@@ -255,11 +251,13 @@ function RagRouteBadge({ rag }) {
 function RagReferences({ rag }) {
   return (
     <details className="rag-details">
-      <summary>REF（{rag.refs?.length ?? 0} 筆）</summary>
+      <summary>REF：{rag.refs?.length ?? 0} 筆</summary>
       <div className="rag-ref-list">
         {(rag.refs ?? []).map((ref) => (
           <div className="rag-ref-item" key={ref.index}>
-            <strong>[{ref.index}] {ref.title}</strong>
+            <strong>
+              [{ref.index}] {ref.title}
+            </strong>
             <span>{ref.source}</span>
             <small>similarity {Number(ref.similarity ?? 0).toFixed(4)}</small>
           </div>
@@ -269,15 +267,174 @@ function RagReferences({ rag }) {
   )
 }
 
+function ImagePreviewModal({ image, onClose }) {
+  if (!image) return null
+
+  return (
+    <div className="image-preview-modal" role="dialog" aria-modal="true">
+      <button aria-label="關閉圖片預覽" className="image-preview-backdrop" type="button" onClick={onClose} />
+      <div className="image-preview-dialog">
+        <button aria-label="關閉圖片預覽" className="image-preview-close" type="button" onClick={onClose}>
+          <X size={20} />
+        </button>
+        <img alt={image.original_filename || 'uploaded image'} src={image.url} />
+        <p>{image.original_filename || image.filename}</p>
+      </div>
+    </div>
+  )
+}
+
+function ImageAttachmentList({ attachments }) {
+  const [previewImage, setPreviewImage] = useState(null)
+
+  if (!attachments?.length) return null
+
+  return (
+    <>
+      <div className="message-attachments">
+        {attachments.map((image) => (
+          <button
+            className="message-image-thumb"
+            key={image.filename || image.url}
+            title="開啟圖片預覽"
+            type="button"
+            onClick={() => setPreviewImage(image)}
+          >
+            <img alt={image.original_filename || 'uploaded image'} src={image.url} />
+          </button>
+        ))}
+      </div>
+      <ImagePreviewModal image={previewImage} onClose={() => setPreviewImage(null)} />
+    </>
+  )
+}
+
+function ImageItemsTable({ items }) {
+  if (!items?.length) {
+    return <p className="sql-empty-note">沒有辨識到明細項目。</p>
+  }
+
+  return (
+    <div className="sql-table-wrap">
+      <table className="sql-result-table">
+        <thead>
+          <tr>
+            <th>description</th>
+            <th>quantity</th>
+            <th>unit_price</th>
+            <th>amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, index) => (
+            <tr key={`${index}-${item.description ?? 'item'}`}>
+              <td>{item.description ?? ''}</td>
+              <td>{item.quantity ?? ''}</td>
+              <td>{item.unit_price ?? ''}</td>
+              <td>{item.amount ?? ''}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ImageSkillPanel({ imageSkill, dbWrite, message, onCancelDbWrite, onConfirmDbWrite }) {
+  const extraction = imageSkill.extraction ?? {}
+  const isPending = dbWrite?.status === 'pending_confirmation'
+
+  return (
+    <div className="image-skill-panel">
+      <div className="image-skill-header">
+        <span>本次使用 route</span>
+        <strong>{imageSkill.route ?? 'Image Skill'}</strong>
+      </div>
+
+      <p className="image-skill-status">
+        {imageSkill.status === 'error'
+          ? '圖片辨識失敗'
+          : imageSkill.status === 'missing_image'
+            ? '缺少圖片'
+            : dbWrite?.status === 'confirmed'
+              ? `已寫入 invoices：ID ${dbWrite.record_id ?? '-'}`
+              : dbWrite?.status === 'missing_fields'
+                ? '辨識結果缺少必要欄位'
+                : '辨識結果待確認'}
+      </p>
+
+      {imageSkill.image ? <ImageAttachmentList attachments={[imageSkill.image]} /> : null}
+
+      {imageSkill.error ? <div className="db-write-warning">{imageSkill.error}</div> : null}
+      {dbWrite?.missing_fields?.length ? (
+        <div className="db-write-warning">缺少欄位：{dbWrite.missing_fields.join('、')}</div>
+      ) : null}
+
+      {Object.keys(extraction).length ? (
+        <>
+          <KeyValueGrid
+            data={{
+              invoice_number: extraction.invoice_number,
+              invoice_date: extraction.invoice_date,
+              buyer_tax_id: extraction.buyer_tax_id,
+              seller_tax_id: extraction.seller_tax_id,
+              vendor_name: extraction.vendor_name,
+              total_amount: extraction.total_amount,
+              confidence: extraction.confidence,
+            }}
+          />
+          <details className="db-write-details">
+            <summary>明細項目</summary>
+            <ImageItemsTable items={extraction.items} />
+          </details>
+          {extraction.raw_text ? (
+            <details className="db-write-details">
+              <summary>raw_text</summary>
+              <p className="raw-text-block">{extraction.raw_text}</p>
+            </details>
+          ) : null}
+          {extraction.notes?.length ? (
+            <ul className="db-write-warning-list">
+              {extraction.notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      ) : null}
+
+      {isPending ? (
+        <div className="db-write-actions">
+          <button className="confirm-write-button" type="button" onClick={() => onConfirmDbWrite?.(message.id)}>
+            確認寫入
+          </button>
+          <button className="cancel-write-button" type="button" onClick={() => onCancelDbWrite?.(message.id)}>
+            取消
+          </button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function AssistantContent({ message, onCancelDbWrite, onConfirmDbWrite }) {
   const sqlAgent = message.metadata?.sql_agent
   const dbWrite = message.metadata?.db_write
   const rag = message.metadata?.rag
+  const imageSkill = message.metadata?.image_skill
 
   return (
     <>
       {sqlAgent ? <SqlAgentPanel sqlAgent={sqlAgent} /> : null}
-      {dbWrite ? (
+      {imageSkill ? (
+        <ImageSkillPanel
+          dbWrite={dbWrite}
+          imageSkill={imageSkill}
+          message={message}
+          onCancelDbWrite={onCancelDbWrite}
+          onConfirmDbWrite={onConfirmDbWrite}
+        />
+      ) : dbWrite ? (
         <DbWritePanel
           dbWrite={dbWrite}
           message={message}
@@ -292,16 +449,11 @@ function AssistantContent({ message, onCancelDbWrite, onConfirmDbWrite }) {
   )
 }
 
-function MessageBubble({
-  message,
-  onCancelDbWrite,
-  onConfirmDbWrite,
-  onConfirmRoute,
-  onSelectRoute,
-}) {
+function MessageBubble({ message, onCancelDbWrite, onConfirmDbWrite, onConfirmRoute, onSelectRoute }) {
   const isUser = message.role === 'user'
   const isLoading = message.status === 'loading'
   const isRouterDecision = message.metadata?.type === 'router_decision'
+  const attachments = message.metadata?.attachments ?? []
   const label =
     {
       user: '你',
@@ -322,17 +474,18 @@ function MessageBubble({
           .join(' ')}
       >
         {isRouterDecision ? (
-          <RouterDecisionCard
-            message={message}
-            onConfirmRoute={onConfirmRoute}
-            onSelectRoute={onSelectRoute}
-          />
+          <RouterDecisionCard message={message} onConfirmRoute={onConfirmRoute} onSelectRoute={onSelectRoute} />
         ) : isLoading ? (
           <span className="typing-indicator" aria-label="等待 LLM 回覆">
             <span />
             <span />
             <span />
           </span>
+        ) : isUser ? (
+          <>
+            <ImageAttachmentList attachments={attachments} />
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          </>
         ) : (
           <AssistantContent
             message={message}

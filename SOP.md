@@ -809,9 +809,7 @@ Codex，我現在要進入第 14 階段：加入 Audit Log、Token 紀錄與安�
 目標：把作品收斂成學員可重跑、講師可 demo 的版本。
 
 ```text
-Codex，我現在要進入第 15 階段：總整理、UIUX 強化與課堂驗收。
-
-請你把目前專案整理成適合課堂 Demo 的狀態。
+Codex，我現在要進入第 15 階段：總整理、UIUX 強化
 
 UIUX：
 
@@ -823,46 +821,7 @@ UIUX：
 - Light / Dark Mode 都要檢查。
 - 不要做 landing page，第一畫面就是工具。
 
-啟動與重置：
 
-- README 要有完整流程：
-  1. 啟動 Docker DB。
-  2. 建立後端環境。
-  3. 安裝 requirements。
-  4. 複製 .env.example 到 .env。
-  5. 填入 OPENAI_API_KEY。
-  6. 初始化 DB。
-  7. seed 公司資料。
-  8. seed RAG 知識庫。
-  9. 啟動 Flask。
-  10. 啟動 React。
-- 加入一個方便課堂使用的 reset 指令或 script：
-  - 清空並重建資料表。
-  - 重新 seed。
-- 加入 smoke test script，至少檢查：
-  - backend health
-  - db health
-  - db summary
-  - chat API
-
-Demo script：
-
-請在 README 加一段「6 分鐘 Demo 流程」，包含：
-
-1. 一般聊天。
-2. 查 DB：資訊部有哪些員工？
-3. SQL Agent：各部門費用總額。
-4. DB Write：新增一筆交通費。
-5. RAG：VPN 連不上怎麼辦？
-6. Image Skill：上傳發票圖並確認寫入。
-7. Audit Log：展示系統剛剛做了哪些事。
-
-最後請你：
-
-- 執行 lint / build / smoke test，如果專案有這些指令。
-- 啟動或至少驗證前後端沒有語法錯誤。
-- 回報目前可以打開的網址。
-- 回報還需要講師手動補上的東西，例如 OPENAI_API_KEY。
 ```
 
 驗收重點：

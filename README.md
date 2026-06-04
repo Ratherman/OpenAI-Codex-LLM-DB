@@ -15,6 +15,7 @@
 - `GET /api/expenses`
 - `GET /api/invoices`
 - `GET /api/llm/health`
+- `POST /api/uploads/image`
 - `POST /api/chat/rooms`
 - `GET /api/chat/rooms`
 - `PATCH /api/chat/rooms/:id`
@@ -28,6 +29,78 @@
 - 聊天室與訊息會寫入 MySQL，重新整理頁面後仍會保留
 - 前端選到的模型會送到後端並寫入 `metadata_json`
 - 第 7 階段已串接 OpenAI API；如果沒有 `OPENAI_API_KEY`，前端會顯示清楚錯誤
+
+## Image Skill 圖片辨識
+
+第 13 階段加入 Image Skill，讓使用者可以在聊天室上傳發票、收據或文件截圖。
+
+Image Skill 的多輪補欄位不是只靠一般聊天記憶。系統會在 `chat_messages.metadata_json`
+保留上一張發票的 `image_skill` 與 `db_write` 狀態。若上一張發票仍是
+`missing_fields` 或 `pending_confirmation`，使用者後續輸入例如
+`buyer tax id 是 62192453`、`請幫我彙整剛剛的發票資訊`，會優先接續這張待確認發票，
+而不是要求重新上傳圖片或改走 DB Query。
+
+前端流程：
+
+1. 右側 Control Panel 開啟 `Enable Image Skill`。
+2. 在聊天輸入區按 `上傳圖片`。
+3. 支援 `jpg`、`jpeg`、`png`、`webp`。
+4. 單張圖片大小上限為 `10MB`。
+5. 上傳成功後會在輸入區顯示縮圖。
+6. 送出後，圖片縮圖會保存在聊天訊息中。
+7. 點縮圖可以開啟圖片預覽 modal。
+
+後端上傳 API：
+
+```http
+POST /api/uploads/image
+```
+
+表單欄位：
+
+```text
+image=<圖片檔案>
+```
+
+圖片會保存在：
+
+```text
+backend/uploads/
+```
+
+此資料夾已在 `.gitignore` 中排除，不會提交圖片檔。
+
+Image Skill route 流程：
+
+1. Context Router 判斷或使用者手動選擇 `image_skill`。
+2. 若 `Enable Image Skill` 未開啟，assistant 會提示：`Image Skill 尚未啟用，請先在右側開啟。`
+3. 若沒有上傳圖片但選了 `image_skill`，assistant 會提示：`請先上傳圖片，再使用 Image Skill 進行發票或收據辨識。`
+4. 有圖片時，後端會把圖片交給 OpenAI vision-capable model 辨識。
+5. 辨識輸出會用 Pydantic 驗證。
+6. 系統不會直接寫入 `invoices`。
+7. 前端會先顯示「辨識結果待確認」卡片。
+8. 使用者按 `確認寫入` 後，才會呼叫白名單工具 `create_invoice` 寫入資料庫。
+9. 寫入成功後，聊天訊息會顯示新增的 invoice id。
+10. `audit_logs` 會記錄圖片辨識與確認寫入。
+
+Invoice extraction skill 說明檔位於：
+
+```text
+backend/app/skills/invoice_extraction/SKILL.md
+```
+
+測試上傳 API：
+
+```powershell
+curl.exe -F "image=@C:\path\to\invoice.png;type=image/png" http://127.0.0.1:5000/api/uploads/image
+```
+
+測試 Image Skill 補欄位流程：
+
+```powershell
+conda activate Codex_Demo
+python backend/scripts/test_image_skill_followup.py
+```
 
 ## 專案結構
 

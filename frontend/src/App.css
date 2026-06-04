@@ -672,6 +672,140 @@ button {
   font-size: 12px;
 }
 
+.image-skill-panel {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.image-skill-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.image-skill-header span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.image-skill-header strong {
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 36%, transparent);
+  border-radius: 999px;
+  color: var(--primary-strong);
+  font-size: 12px;
+  padding: 4px 9px;
+}
+
+.image-skill-status {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.message-image-thumb {
+  background: transparent;
+  border: 0;
+  cursor: zoom-in;
+  padding: 0;
+}
+
+.message-image-thumb img {
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: block;
+  max-height: 160px;
+  object-fit: cover;
+  width: min(240px, 100%);
+}
+
+.raw-text-block {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+.image-preview-modal {
+  align-items: center;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 80;
+}
+
+.image-preview-backdrop {
+  background: rgba(15, 23, 42, 0.68);
+  border: 0;
+  cursor: zoom-out;
+  inset: 0;
+  position: absolute;
+}
+
+.image-preview-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+  display: grid;
+  gap: 10px;
+  max-height: min(88vh, 900px);
+  max-width: min(92vw, 980px);
+  padding: 12px;
+  position: relative;
+  z-index: 1;
+}
+
+.image-preview-dialog img {
+  border-radius: 6px;
+  max-height: 76vh;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.image-preview-dialog p {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.image-preview-close {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 36px;
+}
+
 .db-write-header {
   align-items: center;
   display: flex;
@@ -1047,6 +1181,8 @@ button {
 
 .composer-toolbar {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .image-upload-button {
@@ -1066,6 +1202,79 @@ button {
 .image-upload-button:disabled {
   cursor: not-allowed;
   opacity: 0.78;
+}
+
+.visually-hidden {
+  height: 1px;
+  left: -9999px;
+  overflow: hidden;
+  position: absolute;
+  top: auto;
+  width: 1px;
+}
+
+.composer-hint,
+.composer-error {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.composer-error {
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  border-radius: 8px;
+  color: var(--danger);
+  margin: 0;
+  padding: 8px 10px;
+}
+
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.composer-image-chip {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px;
+}
+
+.composer-image-chip img {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  height: 44px;
+  object-fit: cover;
+  width: 44px;
+}
+
+.composer-image-chip span {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-image-chip button {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
 }
 
 .composer-row {

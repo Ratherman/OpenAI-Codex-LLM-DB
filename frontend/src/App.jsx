@@ -57,6 +57,23 @@ async function apiRequest(path, options = {}) {
   return data
 }
 
+async function uploadImageFile(file) {
+  const formData = new FormData()
+  formData.append('image', file)
+
+  const response = await fetch(`${API_BASE_URL}/api/uploads/image`, {
+    method: 'POST',
+    body: formData,
+  })
+  const data = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(data.error || `HTTP ${response.status}`)
+  }
+
+  return data.image
+}
+
 function App() {
   const [rooms, setRooms] = useState([])
   const [activeRoomId, setActiveRoomId] = useState(null)
@@ -234,6 +251,7 @@ function App() {
     enableRag: settings.enableRag,
     enableImageSkill: settings.enableImageSkill,
     enableAuditLog: settings.enableAuditLog,
+    attachments: overrides.attachments ?? [],
     ...overrides,
   })
 
@@ -285,6 +303,7 @@ function App() {
   const postMessageToBackend = async ({
     targetRoomId,
     text,
+    attachments = [],
     optimisticUserMessage,
     loadingAssistantMessage,
     routerResult = null,
@@ -295,6 +314,7 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(
         buildMessagePayload(text, {
+          attachments,
           routerResult,
           confirmedRoute,
         }),
@@ -363,13 +383,20 @@ function App() {
     setMobileSidebarOpen(false)
   }
 
-  const handleSendMessage = async (content) => {
+  const handleUploadImage = async (file) => {
+    return uploadImageFile(file)
+  }
+
+  const handleSendMessage = async (content, attachments = []) => {
     const text = content.trim()
-    if (!text || !activeRoom || isSending || pendingRouter) return
+    const imageAttachments = Array.isArray(attachments) ? attachments : []
+    const messageText = text || (imageAttachments.length ? '請辨識這張圖片。' : '')
+    if (!messageText || !activeRoom || isSending || pendingRouter) return
 
     const targetRoomId = activeRoom.id
-    const optimisticUserMessage = createTemporaryMessage(targetRoomId, 'user', text, {
+    const optimisticUserMessage = createTemporaryMessage(targetRoomId, 'user', messageText, {
       source: 'frontend_optimistic',
+      attachments: imageAttachments,
     })
 
     setActionError('')
@@ -382,7 +409,8 @@ function App() {
       try {
         await postMessageToBackend({
           targetRoomId,
-          text,
+          text: messageText,
+          attachments: imageAttachments,
           optimisticUserMessage,
           loadingAssistantMessage,
         })
@@ -410,8 +438,9 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: text,
+          message: messageText,
           model: settings.model,
+          attachments: imageAttachments,
         }),
       })
       const routerResult = routeData.router
@@ -432,7 +461,8 @@ function App() {
       if (!settings.autoRoute) {
         setPendingRouter({
           roomId: targetRoomId,
-          text,
+          text: messageText,
+          attachments: imageAttachments,
           optimisticUserMessage,
           routerMessageId: routerDecisionMessage.id,
           routerResult,
@@ -447,7 +477,8 @@ function App() {
 
       await postMessageToBackend({
         targetRoomId,
-        text,
+        text: messageText,
+        attachments: imageAttachments,
         optimisticUserMessage,
         loadingAssistantMessage,
         routerResult,
@@ -531,6 +562,7 @@ function App() {
       await postMessageToBackend({
         targetRoomId: pendingRouter.roomId,
         text: pendingRouter.text,
+        attachments: pendingRouter.attachments ?? [],
         optimisticUserMessage: pendingRouter.optimisticUserMessage,
         loadingAssistantMessage,
         routerResult: pendingRouter.routerResult,
@@ -637,6 +669,7 @@ function App() {
         chat={activeChat}
         dbHealth={dbHealth}
         error={messagesError || actionError}
+        enableImageSkill={settings.enableImageSkill}
         hasPendingRouter={Boolean(pendingRouter)}
         isLoadingMessages={messagesStatus === 'loading'}
         isSending={isSending}
@@ -650,6 +683,7 @@ function App() {
         onRefreshDbHealth={checkDbHealth}
         onSelectRoute={handleSelectRoute}
         onSendMessage={handleSendMessage}
+        onUploadImage={handleUploadImage}
       />
 
       <ControlPanel

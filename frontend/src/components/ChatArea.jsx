@@ -1,10 +1,13 @@
-import { Database, ImagePlus, Menu, RefreshCw, Send, SlidersHorizontal } from 'lucide-react'
+import { Database, ImagePlus, Menu, RefreshCw, Send, SlidersHorizontal, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import MessageBubble from './MessageBubble.jsx'
+
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024
 
 function ChatArea({
   chat,
   dbHealth,
+  enableImageSkill,
   error,
   hasPendingRouter,
   isLoadingMessages,
@@ -18,21 +21,59 @@ function ChatArea({
   onRefreshDbHealth,
   onSelectRoute,
   onSendMessage,
+  onUploadImage,
   selectedModel,
 }) {
   const [draft, setDraft] = useState('')
+  const [attachments, setAttachments] = useState([])
+  const [uploadError, setUploadError] = useState('')
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
   const messagesEndRef = useRef(null)
+  const imageInputRef = useRef(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [chat?.messages])
 
+  useEffect(() => {
+    setAttachments([])
+    setUploadError('')
+  }, [chat?.id])
+
   const submitMessage = (event) => {
     event.preventDefault()
-    if (!draft.trim() || isSending || hasPendingRouter || !chat) return
+    if ((!draft.trim() && attachments.length === 0) || isSending || hasPendingRouter || !chat) return
 
-    onSendMessage(draft)
+    onSendMessage(draft, attachments)
     setDraft('')
+    setAttachments([])
+    setUploadError('')
+  }
+
+  const handlePickImage = () => {
+    imageInputRef.current?.click()
+  }
+
+  const handleImageChange = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      setUploadError('圖片太大，請上傳 10MB 以內的檔案。')
+      return
+    }
+
+    setUploadError('')
+    setIsUploadingImage(true)
+    try {
+      const uploadedImage = await onUploadImage(file)
+      setAttachments([uploadedImage])
+    } catch (uploadException) {
+      setUploadError(uploadException instanceof Error ? uploadException.message : '圖片上傳失敗')
+    } finally {
+      setIsUploadingImage(false)
+    }
   }
 
   const dbLabel = {
@@ -81,9 +122,9 @@ function ChatArea({
             {dbLabel}
           </span>
           <button
-            aria-label="重新檢查資料庫狀態"
+            aria-label="重新檢查資料庫"
             className="icon-button"
-            title="重新檢查資料庫狀態"
+            title="重新檢查資料庫"
             type="button"
             onClick={onRefreshDbHealth}
           >
@@ -95,9 +136,9 @@ function ChatArea({
       <section aria-label="聊天訊息" className="message-list">
         {isLoadingMessages ? <p className="status-note">載入訊息中...</p> : null}
         {error ? <p className="error-banner">{error}</p> : null}
-        {!chat && !isLoadingMessages ? <p className="empty-state">請先新增或選擇一個聊天室。</p> : null}
+        {!chat && !isLoadingMessages ? <p className="empty-state">請先新增或選擇聊天室。</p> : null}
         {chat && !isLoadingMessages && chat.messages.length === 0 ? (
-          <p className="empty-state">輸入一則訊息，開始建立 DB Agent Chat demo。</p>
+          <p className="empty-state">輸入第一則訊息，開始 DB Agent Chat demo。</p>
         ) : null}
         {chat?.messages.map((message) => (
           <MessageBubble
@@ -114,21 +155,53 @@ function ChatArea({
 
       <form className="composer" onSubmit={submitMessage}>
         <div className="composer-toolbar">
+          <input
+            accept="image/jpeg,image/png,image/webp"
+            className="visually-hidden"
+            ref={imageInputRef}
+            type="file"
+            onChange={handleImageChange}
+          />
           <button
-            aria-label="圖片功能尚未啟用"
+            aria-label="上傳發票或收據圖片"
             className="image-upload-button"
-            disabled
-            title="圖片功能尚未啟用"
+            disabled={!chat || isSending || hasPendingRouter || isUploadingImage || !enableImageSkill}
+            title={enableImageSkill ? '上傳發票或收據圖片' : '請先在右側開啟 Enable Image Skill'}
             type="button"
+            onClick={handlePickImage}
           >
-            <ImagePlus size={18} />
-            圖片功能尚未啟用
+            {isUploadingImage ? <RefreshCw className="spin" size={18} /> : <ImagePlus size={18} />}
+            {isUploadingImage ? '圖片上傳中...' : '上傳圖片'}
           </button>
+          {!enableImageSkill ? <span className="composer-hint">圖片辨識需先開啟 Enable Image Skill</span> : null}
         </div>
+
+        {uploadError ? <p className="composer-error">{uploadError}</p> : null}
+
+        {attachments.length ? (
+          <div className="composer-attachments">
+            {attachments.map((image) => (
+              <div className="composer-image-chip" key={image.filename}>
+                <img alt={image.original_filename || 'uploaded image'} src={image.url} />
+                <span>{image.original_filename || image.filename}</span>
+                <button
+                  aria-label="移除圖片"
+                  type="button"
+                  onClick={() =>
+                    setAttachments((current) => current.filter((item) => item.filename !== image.filename))
+                  }
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <div className="composer-row">
           <textarea
             aria-label="輸入訊息"
-            placeholder={hasPendingRouter ? '請先確認 Router 判斷結果' : '輸入訊息...'}
+            placeholder={hasPendingRouter ? '請先確認 Router 判斷' : '輸入訊息，也可以搭配圖片送出...'}
             rows={2}
             value={draft}
             disabled={!chat || isSending || hasPendingRouter}
@@ -142,7 +215,7 @@ function ChatArea({
           <button
             aria-label="送出訊息"
             className="send-button"
-            disabled={!chat || isSending || hasPendingRouter}
+            disabled={!chat || isSending || hasPendingRouter || (!draft.trim() && attachments.length === 0)}
             title="送出訊息"
             type="submit"
           >
