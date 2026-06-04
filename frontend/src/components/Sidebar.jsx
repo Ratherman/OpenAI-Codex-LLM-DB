@@ -83,7 +83,7 @@ function Sidebar({
       </button>
 
       {isLoading ? <p className="sidebar-status">載入聊天室...</p> : null}
-      {error ? <p className="sidebar-error">{error}</p> : null}
+      {error ? <p className="sidebar-error" role="alert">{error}</p> : null}
 
       <nav aria-label="聊天室列表" className="chat-list">
         {chats.map((chat) => {

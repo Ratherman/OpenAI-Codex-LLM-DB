@@ -4,6 +4,26 @@ import MessageBubble from './MessageBubble.jsx'
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024
 
+function DebugErrorBanner({ error }) {
+  if (!error) return null
+
+  return (
+    <div className="error-banner" role="alert">
+      <strong>執行失敗</strong>
+      <p>{error}</p>
+      <details>
+        <summary>Debug checklist</summary>
+        <ul>
+          <li>確認 Flask 後端正在執行：GET /api/health。</li>
+          <li>若是 DB 錯誤，確認 Docker MySQL 已啟動並重新整理 DB 狀態。</li>
+          <li>若是 LLM 錯誤，確認 .env 已設定 OPENAI_API_KEY 並重啟後端。</li>
+          <li>若是權限或 route 問題，檢查右側功能開關是否已啟用。</li>
+        </ul>
+      </details>
+    </div>
+  )
+}
+
 function ChatArea({
   chat,
   dbHealth,
@@ -136,9 +156,13 @@ function ChatArea({
         </div>
       </section>
 
-      <section aria-label="聊天訊息" className="message-list">
+      <section
+        aria-busy={isLoadingMessages || isSending}
+        aria-label="聊天訊息"
+        className="message-list"
+      >
         {isLoadingMessages ? <p className="status-note">載入訊息中...</p> : null}
-        {error ? <p className="error-banner">{error}</p> : null}
+        <DebugErrorBanner error={error} />
         {!chat && !isLoadingMessages ? <p className="empty-state">請先新增或選擇聊天室。</p> : null}
         {chat && !isLoadingMessages && chat.messages.length === 0 ? (
           <p className="empty-state">輸入第一則訊息，開始 DB Agent Chat demo。</p>
@@ -180,7 +204,7 @@ function ChatArea({
           {!enableImageSkill ? <span className="composer-hint">圖片辨識需先開啟 Enable Image Skill</span> : null}
         </div>
 
-        {uploadError ? <p className="composer-error">{uploadError}</p> : null}
+        {uploadError ? <p className="composer-error" role="alert">{uploadError}</p> : null}
 
         {attachments.length ? (
           <div className="composer-attachments">

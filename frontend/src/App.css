@@ -1,6 +1,6 @@
 :root {
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Plus Jakarta Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -14,6 +14,7 @@
 
 body {
   margin: 0;
+  overflow: hidden;
 }
 
 button,
@@ -25,6 +26,19 @@ textarea {
 
 button {
   border: 0;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+button:disabled {
+  cursor: not-allowed;
 }
 
 .theme-light {
@@ -45,7 +59,8 @@ button {
   --danger-soft: #fee2e2;
   --warning: #a16207;
   --warning-soft: #fef3c7;
-  --shadow: 0 20px 55px rgba(15, 23, 42, 0.12);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 24%, transparent);
+  --shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
 }
 
 .theme-dark {
@@ -66,7 +81,8 @@ button {
   --danger-soft: #4a1e24;
   --warning: #facc15;
   --warning-soft: #443717;
-  --shadow: 0 22px 65px rgba(0, 0, 0, 0.35);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent);
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
 }
 
 .app-root {
@@ -77,6 +93,7 @@ button {
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--control-width);
   height: 100vh;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -338,6 +355,16 @@ button {
   padding: 22px 28px;
 }
 
+.chat-header > div:first-child,
+.panel-header > div:first-child {
+  min-width: 0;
+}
+
+.chat-header h1,
+.panel-header h2 {
+  overflow-wrap: anywhere;
+}
+
 .stage-badge {
   background: var(--success-soft);
   border: 1px solid color-mix(in srgb, var(--success) 36%, transparent);
@@ -355,6 +382,7 @@ button {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .model-pill,
@@ -368,6 +396,7 @@ button {
   font-weight: 800;
   gap: 6px;
   min-height: 32px;
+  max-width: 100%;
   padding: 0 12px;
   white-space: nowrap;
 }
@@ -420,7 +449,8 @@ button {
   gap: 18px;
   min-height: 0;
   overflow: auto;
-  padding: 28px;
+  padding: 28px clamp(18px, 3vw, 36px);
+  scroll-padding-bottom: 24px;
 }
 
 .status-note,
@@ -446,16 +476,38 @@ button {
   background: var(--danger-soft);
   border: 1px solid color-mix(in srgb, var(--danger) 36%, transparent);
   color: var(--danger);
+  display: grid;
+  gap: 8px;
+  max-width: min(720px, 100%);
+  text-align: left;
+}
+
+.error-banner strong,
+.error-banner p,
+.error-banner ul {
+  margin: 0;
+}
+
+.error-banner summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.error-banner ul {
+  padding-left: 20px;
 }
 
 .message-row {
   display: grid;
   gap: 6px;
-  max-width: min(720px, 82%);
+  max-width: min(920px, 92%);
+  min-width: 0;
 }
 
 .message-row.from-user {
   align-self: flex-end;
+  max-width: min(680px, 78%);
 }
 
 .message-row.from-system {
@@ -477,6 +529,8 @@ button {
   border-radius: 8px;
   box-shadow: var(--shadow);
   line-height: 1.6;
+  max-width: 100%;
+  min-width: 0;
   overflow-wrap: anywhere;
   padding: 14px 16px;
 }
@@ -507,12 +561,15 @@ button {
   display: grid;
   gap: 10px;
   margin-bottom: 14px;
+  min-width: 0;
   padding: 12px;
 }
 
 .sql-agent-header {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: space-between;
 }
 
@@ -552,6 +609,7 @@ button {
   border-width: 1px 0 0;
   margin: 0;
   max-width: 100%;
+  overflow-x: auto;
 }
 
 .sql-agent-details p,
@@ -566,20 +624,24 @@ button {
   border-top: 1px solid var(--border);
   max-width: 100%;
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sql-result-table {
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 100%;
-  white-space: nowrap;
+  min-width: min(680px, 100%);
+  white-space: normal;
 }
 
 .sql-result-table th,
 .sql-result-table td {
   border-bottom: 1px solid var(--border);
+  max-width: 260px;
+  overflow-wrap: anywhere;
   padding: 8px 10px;
   text-align: left;
+  vertical-align: top;
 }
 
 .sql-result-table th {
@@ -602,6 +664,7 @@ button {
   display: grid;
   gap: 10px;
   margin-bottom: 14px;
+  min-width: 0;
   padding: 12px;
 }
 
@@ -612,12 +675,15 @@ button {
   display: grid;
   gap: 10px;
   margin-bottom: 14px;
+  min-width: 0;
   padding: 12px;
 }
 
 .rag-header {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: space-between;
 }
 
@@ -687,12 +753,15 @@ button {
   display: grid;
   gap: 10px;
   margin-bottom: 14px;
+  min-width: 0;
   padding: 12px;
 }
 
 .image-skill-header {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: space-between;
 }
 
@@ -817,6 +886,8 @@ button {
 .db-write-header {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: space-between;
 }
 
@@ -861,7 +932,8 @@ button {
 .write-field-grid {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  min-width: 0;
 }
 
 .write-field-grid div {
@@ -944,13 +1016,16 @@ button {
 .router-card {
   display: grid;
   gap: 12px;
-  min-width: min(560px, 100%);
+  max-width: 100%;
+  min-width: 0;
   padding: 14px;
 }
 
 .router-card-header {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: space-between;
 }
 
@@ -1012,6 +1087,7 @@ button {
   border: 1px solid var(--border);
   border-radius: 8px;
   margin-top: 14px;
+  max-width: 100%;
   overflow: hidden;
 }
 
@@ -1063,6 +1139,7 @@ button {
   border-width: 1px 0 0;
   margin: 0;
   max-height: 220px;
+  overflow: auto;
 }
 
 .execution-ref-list {
@@ -1097,6 +1174,8 @@ button {
   background: var(--surface-soft);
   border: 1px solid var(--border);
   color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 0 8px;
 }
 

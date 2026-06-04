@@ -524,6 +524,22 @@ function AssistantContent({ message, onCancelDbWrite, onConfirmDbWrite, showAudi
   )
 }
 
+function LoadingContent({ message }) {
+  return (
+    <div className="loading-message">
+      <span className="typing-indicator" aria-label="等待 LLM 回覆">
+        <span />
+        <span />
+        <span />
+      </span>
+      <div>
+        <strong>{message.content || '正在處理...'}</strong>
+        <small>Router、LLM 或資料庫工具正在執行，請稍候。</small>
+      </div>
+    </div>
+  )
+}
+
 function MessageBubble({
   message,
   onCancelDbWrite,
@@ -563,11 +579,7 @@ function MessageBubble({
             onSelectRoute={onSelectRoute}
           />
         ) : isLoading ? (
-          <span className="typing-indicator" aria-label="等待 LLM 回覆">
-            <span />
-            <span />
-            <span />
-          </span>
+          <LoadingContent message={message} />
         ) : isUser ? (
           <>
             <ImageAttachmentList attachments={attachments} />

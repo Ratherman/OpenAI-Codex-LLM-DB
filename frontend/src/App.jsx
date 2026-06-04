@@ -84,7 +84,7 @@ function App() {
   const [roomsError, setRoomsError] = useState('')
   const [messagesError, setMessagesError] = useState('')
   const [actionError, setActionError] = useState('')
-  const [theme, setTheme] = useState('light')
+  const [theme, setTheme] = useState(() => localStorage.getItem('db-agent-theme') || 'light')
   const [settings, setSettings] = useState(defaultSettings)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [controlsCollapsed, setControlsCollapsed] = useState(false)
@@ -267,6 +267,10 @@ function App() {
     checkDbSummary()
     checkLlmHealth()
   }, [checkDbHealth, checkDbSummary, checkLlmHealth, loadRooms])
+
+  useEffect(() => {
+    localStorage.setItem('db-agent-theme', theme)
+  }, [theme])
 
   useEffect(() => {
     loadMessages(activeRoomId)

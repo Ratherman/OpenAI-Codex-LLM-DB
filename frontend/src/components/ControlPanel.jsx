@@ -89,7 +89,7 @@ function ControlPanel({
           </div>
 
           {dbSummary.status === 'offline' ? (
-            <p className="summary-error">{dbSummary.error}</p>
+            <p className="summary-error" role="alert">{dbSummary.error}</p>
           ) : (
             <div className="summary-grid">
               <div>
@@ -150,7 +150,7 @@ function ControlPanel({
               <strong>{llmHealth.apiReachable ? '可連線' : '無法連線'}</strong>
             </div>
           </div>
-          {llmHealth.error ? <p className="summary-error">{llmHealth.error}</p> : null}
+          {llmHealth.error ? <p className="summary-error" role="alert">{llmHealth.error}</p> : null}
         </section>
 
         <label className="field">
