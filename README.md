@@ -20,6 +20,7 @@
 - `PATCH /api/chat/rooms/:id`
 - `DELETE /api/chat/rooms/:id`
 - `GET /api/chat/rooms/:id/messages`
+- `POST /api/chat/rooms/:id/route`
 - `POST /api/chat/rooms/:id/messages`
 - `POST /api/chat`
 - 前端可顯示 DB 連線狀態
@@ -362,3 +363,58 @@ POST /api/chat
 - Context Router / DB Query / RAG / Image Skill / Audit Log 開關
 
 `POST /api/chat/rooms/:id/messages` 會呼叫 OpenAI，並把 assistant 回覆寫回 `chat_messages`。
+
+## Context Router
+
+第 9 階段加入 Context Router。當右側 `Enable Context Router` 開啟時，前端會先呼叫：
+
+```http
+POST /api/chat/rooms/:id/route
+```
+
+Router 會回傳：
+
+```json
+{
+  "route": "general_chat",
+  "confidence": 0.82,
+  "reason": "這是一般聊天，不需要查資料庫。",
+  "required_capability": "general_chat",
+  "suggested_followup_question": null
+}
+```
+
+支援的 route：
+
+- `general_chat`：一般聊天。
+- `db_query`：查詢員工、部門、費用、發票、廠商等資料庫資料。
+- `db_write`：新增或修改資料庫資料。
+- `rag`：查公司 SOP 或 MIS 常見問題。
+- `image_skill`：圖片辨識，例如發票、收據、文件截圖。
+
+右側 `Auto Route` 關閉時，聊天區會顯示五種 route 按鈕，使用者可改選後按「確認執行」。`Auto Route` 開啟時，系統會自動接受 Router 判斷。
+
+目前第 9 階段只完成路由判斷與 gate：
+
+- `general_chat` 會繼續呼叫 OpenAI。
+- `db_query` 若 `Enable DB Query` 關閉，會回覆：`DB Query 尚未啟用，請先在右側開啟。`
+- `rag` 若 `Enable RAG` 關閉，會回覆：`RAG 尚未啟用，請先在右側開啟。`
+- `image_skill` 若 `Enable Image Skill` 關閉，會回覆：`Image Skill 尚未啟用，請先在右側開啟。`
+- 已啟用但尚未實作的能力會回覆：`此能力將在下一階段啟用。`
+
+Router 使用 Pydantic 驗證 LLM 的 JSON 輸出；如果 OpenAI API key 不存在、API 呼叫失敗，或 LLM 輸出不是合法 JSON，後端會使用關鍵字 fallback，不會讓系統壞掉。
+
+測試 Router fallback：
+
+```powershell
+conda activate Codex_Demo
+python backend/scripts/test_context_router.py
+```
+
+課堂測試句：
+
+- `請問今天心情如何？` 應走 `general_chat`
+- `資訊部有哪些員工？` 應走 `db_query`
+- `新增一筆餐費 320 元` 應走 `db_write`
+- `VPN 連不上怎麼辦？` 應走 `rag`
+- `這張發票幫我辨識` 應走 `image_skill`

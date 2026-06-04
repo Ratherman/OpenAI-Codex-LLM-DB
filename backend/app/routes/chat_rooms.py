@@ -8,6 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db import get_session
 from app.models import ChatMessage, ChatRoom
 from app.services.llm_service import MissingOpenAIKeyError, generate_reply, sanitize_error
+from app.services.router_service import ROUTE_CAPABILITIES, RouterDecision, normalize_route, route_message
 
 chat_rooms_bp = Blueprint("chat_rooms", __name__)
 
@@ -46,6 +47,68 @@ def get_room_or_404(session, room_id):
     if not room:
         return None, (jsonify({"status": "error", "error": "chat room not found"}), 404)
     return room, None
+
+
+def parse_bool(payload, key, default=False):
+    value = payload.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def serialize_router_decision(decision):
+    return decision.model_dump() if decision else None
+
+
+def parse_router_decision_from_payload(payload):
+    raw_decision = payload.get("routerResult") or payload.get("router")
+    if not raw_decision:
+        return None
+
+    try:
+        return RouterDecision.model_validate(raw_decision)
+    except Exception:
+        return None
+
+
+def build_selected_router_decision(payload, content, model, api_key):
+    confirmed_route = payload.get("confirmedRoute") or payload.get("selectedRoute")
+    existing_decision = parse_router_decision_from_payload(payload)
+
+    if confirmed_route:
+        selected_route = normalize_route(confirmed_route)
+        data = (
+            existing_decision.model_dump()
+            if existing_decision
+            else {
+                "confidence": 1,
+                "reason": "使用者手動選擇 route。",
+                "suggested_followup_question": None,
+            }
+        )
+        data["route"] = selected_route
+        data["required_capability"] = ROUTE_CAPABILITIES[selected_route]
+        return RouterDecision.model_validate(data)
+
+    return existing_decision or route_message(api_key=api_key, message=content, model=model)
+
+
+def get_route_gate_message(route, payload):
+    if route == "general_chat":
+        return None
+
+    if route == "db_query" and not parse_bool(payload, "enableDbQuery", False):
+        return "DB Query 尚未啟用，請先在右側開啟。"
+
+    if route == "rag" and not parse_bool(payload, "enableRag", False):
+        return "RAG 尚未啟用，請先在右側開啟。"
+
+    if route == "image_skill" and not parse_bool(payload, "enableImageSkill", False):
+        return "Image Skill 尚未啟用，請先在右側開啟。"
+
+    return "此能力將在下一階段啟用。"
 
 
 @chat_rooms_bp.post("/api/chat/rooms")
@@ -169,6 +232,39 @@ def list_chat_room_messages(room_id):
         session.close()
 
 
+@chat_rooms_bp.post("/api/chat/rooms/<int:room_id>/route")
+def route_chat_room_message(room_id):
+    payload = request.get_json(silent=True) or {}
+    content = str(payload.get("message", "")).strip()
+    model = str(payload.get("model", "gpt-4o")).strip() or "gpt-4o"
+
+    if not content:
+        return jsonify({"status": "error", "error": "message is required"}), 400
+
+    session = get_session()
+    try:
+        room, error_response = get_room_or_404(session, room_id)
+        if error_response:
+            return error_response
+
+        decision = route_message(
+            api_key=current_app.config["OPENAI_API_KEY"],
+            message=content,
+            model=model,
+        )
+        return jsonify(
+            {
+                "status": "ok",
+                "room": serialize_room(room),
+                "router": serialize_router_decision(decision),
+            }
+        )
+    except SQLAlchemyError as exc:
+        return jsonify({"status": "error", "error": str(exc)}), 500
+    finally:
+        session.close()
+
+
 @chat_rooms_bp.post("/api/chat/rooms/<int:room_id>/messages")
 def create_chat_room_message(room_id):
     payload = request.get_json(silent=True) or {}
@@ -189,6 +285,10 @@ def create_chat_room_message(room_id):
         return jsonify({"status": "error", "error": "memoryRounds must be an integer"}), 400
 
     memory_rounds = max(1, min(10, memory_rounds))
+    enable_context_router = parse_bool(payload, "enableContextRouter", False)
+    auto_route = parse_bool(payload, "autoRoute", True)
+    router_decision = None
+    selected_route = "general_chat"
 
     if not content:
         return jsonify({"status": "error", "error": "message is required"}), 400
@@ -198,6 +298,15 @@ def create_chat_room_message(room_id):
         room, error_response = get_room_or_404(session, room_id)
         if error_response:
             return error_response
+
+        if enable_context_router:
+            router_decision = build_selected_router_decision(
+                payload=payload,
+                content=content,
+                model=model,
+                api_key=current_app.config["OPENAI_API_KEY"],
+            )
+            selected_route = router_decision.route
 
         history = list(
             session.execute(
@@ -215,6 +324,10 @@ def create_chat_room_message(room_id):
                     "model": model,
                     "temperature": payload.get("temperature"),
                     "memory_rounds": memory_rounds,
+                    "context_router_enabled": enable_context_router,
+                    "auto_route": auto_route,
+                    "selected_route": selected_route,
+                    "router": serialize_router_decision(router_decision),
                     "source": "frontend",
                 },
                 ensure_ascii=False,
@@ -226,47 +339,74 @@ def create_chat_room_message(room_id):
 
         status = "ok"
         llm_error = ""
-        try:
-            llm_result = generate_reply(
-                api_key=current_app.config["OPENAI_API_KEY"],
-                message=content,
-                model=model,
-                system_prompt=system_prompt,
-                temperature=temperature,
-                history=history,
-                memory_rounds=memory_rounds,
-            )
-            assistant_content = llm_result["message"]
-            assistant_metadata = {
-                "model": llm_result["model"],
-                "provider": llm_result["provider"],
-                "response_id": llm_result.get("response_id"),
-                "memory_rounds": llm_result.get("memory_rounds"),
-                "memory_message_count": llm_result.get("memory_message_count"),
-                "source": "openai",
-            }
-        except MissingOpenAIKeyError as exc:
-            status = "llm_error"
-            llm_error = str(exc)
-            assistant_content = f"LLM 尚未啟用：{llm_error}"
+        route_gate_message = get_route_gate_message(selected_route, payload)
+
+        if route_gate_message:
+            assistant_content = route_gate_message
             assistant_metadata = {
                 "model": model,
-                "provider": "openai",
+                "provider": "context_router",
                 "memory_rounds": memory_rounds,
-                "error": llm_error,
-                "source": "api",
+                "context_router_enabled": enable_context_router,
+                "auto_route": auto_route,
+                "selected_route": selected_route,
+                "router": serialize_router_decision(router_decision),
+                "source": "router_gate",
             }
-        except Exception as exc:
-            status = "llm_error"
-            llm_error = sanitize_error(exc, current_app.config["OPENAI_API_KEY"])
-            assistant_content = f"LLM 回覆失敗：{llm_error}"
-            assistant_metadata = {
-                "model": model,
-                "provider": "openai",
-                "memory_rounds": memory_rounds,
-                "error": llm_error,
-                "source": "api",
-            }
+        else:
+            try:
+                llm_result = generate_reply(
+                    api_key=current_app.config["OPENAI_API_KEY"],
+                    message=content,
+                    model=model,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    history=history,
+                    memory_rounds=memory_rounds,
+                )
+                assistant_content = llm_result["message"]
+                assistant_metadata = {
+                    "model": llm_result["model"],
+                    "provider": llm_result["provider"],
+                    "response_id": llm_result.get("response_id"),
+                    "memory_rounds": llm_result.get("memory_rounds"),
+                    "memory_message_count": llm_result.get("memory_message_count"),
+                    "context_router_enabled": enable_context_router,
+                    "auto_route": auto_route,
+                    "selected_route": selected_route,
+                    "router": serialize_router_decision(router_decision),
+                    "source": "openai",
+                }
+            except MissingOpenAIKeyError as exc:
+                status = "llm_error"
+                llm_error = str(exc)
+                assistant_content = f"LLM 尚未啟用：{llm_error}"
+                assistant_metadata = {
+                    "model": model,
+                    "provider": "openai",
+                    "memory_rounds": memory_rounds,
+                    "context_router_enabled": enable_context_router,
+                    "auto_route": auto_route,
+                    "selected_route": selected_route,
+                    "router": serialize_router_decision(router_decision),
+                    "error": llm_error,
+                    "source": "api",
+                }
+            except Exception as exc:
+                status = "llm_error"
+                llm_error = sanitize_error(exc, current_app.config["OPENAI_API_KEY"])
+                assistant_content = f"LLM 呼叫失敗：{llm_error}"
+                assistant_metadata = {
+                    "model": model,
+                    "provider": "openai",
+                    "memory_rounds": memory_rounds,
+                    "context_router_enabled": enable_context_router,
+                    "auto_route": auto_route,
+                    "selected_route": selected_route,
+                    "router": serialize_router_decision(router_decision),
+                    "error": llm_error,
+                    "source": "api",
+                }
 
         assistant_message = ChatMessage(
             room_id=room.id,
@@ -285,6 +425,8 @@ def create_chat_room_message(room_id):
                     "room": serialize_room(room),
                     "messages": [serialize_message(user_message), serialize_message(assistant_message)],
                     "llm_error": llm_error,
+                    "router": serialize_router_decision(router_decision),
+                    "selected_route": selected_route,
                 }
             ),
             201,

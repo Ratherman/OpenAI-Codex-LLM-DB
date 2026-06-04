@@ -119,7 +119,7 @@ def generate_reply(api_key, message, model, system_prompt, temperature, history=
 
     response = client.responses.create(
         model=model,
-        instructions=system_prompt or "你是一個實用、精準的 AI 助手。",
+        instructions=system_prompt or "你是一位專業、可靠的 AI 助理，請用繁體中文回答。",
         input=input_messages,
         temperature=temperature,
     )

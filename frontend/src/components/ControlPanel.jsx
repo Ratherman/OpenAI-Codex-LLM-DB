@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, Database, RefreshCw, X } from 'lucide-react'
 
 const toggleFields = [
   ['enableContextRouter', 'Enable Context Router'],
+  ['autoRoute', 'Auto Route'],
   ['enableDbQuery', 'Enable DB Query'],
   ['enableRag', 'Enable RAG'],
   ['enableImageSkill', 'Enable Image Skill'],

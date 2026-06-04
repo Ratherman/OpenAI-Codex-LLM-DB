@@ -6,12 +6,15 @@ function ChatArea({
   chat,
   dbHealth,
   error,
+  hasPendingRouter,
   isLoadingMessages,
   isSending,
   memoryRounds,
+  onConfirmRoute,
   onOpenControls,
   onOpenSidebar,
   onRefreshDbHealth,
+  onSelectRoute,
   onSendMessage,
   selectedModel,
 }) {
@@ -24,7 +27,7 @@ function ChatArea({
 
   const submitMessage = (event) => {
     event.preventDefault()
-    if (!draft.trim() || isSending || !chat) return
+    if (!draft.trim() || isSending || hasPendingRouter || !chat) return
 
     onSendMessage(draft)
     setDraft('')
@@ -33,7 +36,7 @@ function ChatArea({
   const dbLabel = {
     checking: 'DB 檢查中',
     online: 'DB 已連線',
-    offline: 'DB 未連線',
+    offline: 'DB 離線',
   }[dbHealth.status]
 
   return (
@@ -70,15 +73,15 @@ function ChatArea({
           <span className="memory-pill">目前記憶：{memoryRounds} 輪</span>
           <span
             className={`db-status-pill db-${dbHealth.status}`}
-            title={dbHealth.version || dbHealth.error || '資料庫連線狀態'}
+            title={dbHealth.version || dbHealth.error || '資料庫狀態'}
           >
             <Database size={16} />
             {dbLabel}
           </span>
           <button
-            aria-label="重新檢查資料庫連線"
+            aria-label="重新檢查資料庫狀態"
             className="icon-button"
-            title="重新檢查資料庫連線"
+            title="重新檢查資料庫狀態"
             type="button"
             onClick={onRefreshDbHealth}
           >
@@ -90,12 +93,17 @@ function ChatArea({
       <section aria-label="聊天訊息" className="message-list">
         {isLoadingMessages ? <p className="status-note">載入訊息中...</p> : null}
         {error ? <p className="error-banner">{error}</p> : null}
-        {!chat && !isLoadingMessages ? <p className="empty-state">請先新增或選擇聊天室。</p> : null}
+        {!chat && !isLoadingMessages ? <p className="empty-state">請先新增或選擇一個聊天室。</p> : null}
         {chat && !isLoadingMessages && chat.messages.length === 0 ? (
-          <p className="empty-state">這個聊天室還沒有訊息。</p>
+          <p className="empty-state">輸入一則訊息，開始建立 DB Agent Chat demo。</p>
         ) : null}
         {chat?.messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+          <MessageBubble
+            key={message.id}
+            message={message}
+            onConfirmRoute={onConfirmRoute}
+            onSelectRoute={onSelectRoute}
+          />
         ))}
         <div ref={messagesEndRef} />
       </section>
@@ -116,10 +124,10 @@ function ChatArea({
         <div className="composer-row">
           <textarea
             aria-label="輸入訊息"
-            placeholder="輸入訊息..."
+            placeholder={hasPendingRouter ? '請先確認 Router 判斷結果' : '輸入訊息...'}
             rows={2}
             value={draft}
-            disabled={!chat || isSending}
+            disabled={!chat || isSending || hasPendingRouter}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
@@ -130,7 +138,7 @@ function ChatArea({
           <button
             aria-label="送出訊息"
             className="send-button"
-            disabled={!chat || isSending}
+            disabled={!chat || isSending || hasPendingRouter}
             title="送出訊息"
             type="submit"
           >

@@ -19,12 +19,26 @@ const createTemporaryMessage = (roomId, role, content, metadata = {}) => ({
   created_at: new Date().toISOString(),
 })
 
+const createLoadingAssistantMessage = (roomId, content = '正在等待 LLM 回覆...') => ({
+  ...createTemporaryMessage(roomId, 'assistant', content, { source: 'frontend_loading' }),
+  status: 'loading',
+})
+
+const createRouterDecisionMessage = (roomId, router, selectedRoute, status = 'router_pending') =>
+  createTemporaryMessage(roomId, 'assistant', 'Context Router 判斷結果', {
+    type: 'router_decision',
+    router,
+    selectedRoute,
+    status,
+  })
+
 const defaultSettings = {
   model: 'gpt-4o',
   temperature: 0.3,
-  systemPrompt: '你是一個可以協助查詢資料庫與整理資訊的 AI Agent。',
+  systemPrompt: '你是一個可以協助查詢資料庫與整理資訊的 AI Agent，請用繁體中文回答。',
   memoryRounds: 5,
   enableContextRouter: true,
+  autoRoute: false,
   enableDbQuery: true,
   enableRag: false,
   enableImageSkill: false,
@@ -58,6 +72,7 @@ function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [mobileControlsOpen, setMobileControlsOpen] = useState(false)
   const [isSending, setIsSending] = useState(false)
+  const [pendingRouter, setPendingRouter] = useState(null)
   const [dbHealth, setDbHealth] = useState({
     status: 'checking',
     version: '',
@@ -113,6 +128,7 @@ function App() {
 
     setMessagesStatus('loading')
     setMessagesError('')
+    setPendingRouter(null)
 
     try {
       const data = await apiRequest(`/api/chat/rooms/${roomId}/messages`)
@@ -204,6 +220,76 @@ function App() {
     loadMessages(activeRoomId)
   }, [activeRoomId, loadMessages])
 
+  const buildMessagePayload = (text, overrides = {}) => ({
+    message: text,
+    model: settings.model,
+    temperature: settings.temperature,
+    systemPrompt: settings.systemPrompt,
+    memoryRounds: settings.memoryRounds,
+    enableContextRouter: settings.enableContextRouter,
+    autoRoute: settings.autoRoute,
+    enableDbQuery: settings.enableDbQuery,
+    enableRag: settings.enableRag,
+    enableImageSkill: settings.enableImageSkill,
+    enableAuditLog: settings.enableAuditLog,
+    ...overrides,
+  })
+
+  const replaceTemporaryMessages = (userMessageId, assistantMessageId, persistedMessages) => {
+    const [persistedUserMessage, persistedAssistantMessage] = persistedMessages
+
+    setMessages((current) =>
+      current.flatMap((message) => {
+        if (message.id === userMessageId && persistedUserMessage) return [persistedUserMessage]
+        if (message.id === assistantMessageId && persistedAssistantMessage) return [persistedAssistantMessage]
+        return [message]
+      }),
+    )
+  }
+
+  const markLoadingMessageError = (messageId, errorMessage) => {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              status: 'error',
+              content: `執行失敗：${errorMessage}`,
+              metadata: { source: 'frontend_error', error: errorMessage },
+              metadata_json: JSON.stringify({ source: 'frontend_error', error: errorMessage }),
+            }
+          : message,
+      ),
+    )
+  }
+
+  const postMessageToBackend = async ({
+    targetRoomId,
+    text,
+    optimisticUserMessage,
+    loadingAssistantMessage,
+    routerResult = null,
+    confirmedRoute = null,
+  }) => {
+    const data = await apiRequest(`/api/chat/rooms/${targetRoomId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(
+        buildMessagePayload(text, {
+          routerResult,
+          confirmedRoute,
+        }),
+      ),
+    })
+
+    replaceTemporaryMessages(
+      optimisticUserMessage.id,
+      loadingAssistantMessage.id,
+      data.messages ?? [],
+    )
+    await loadRooms(targetRoomId)
+  }
+
   const handleCreateChat = async () => {
     setActionError('')
     try {
@@ -244,6 +330,7 @@ function App() {
       await apiRequest(`/api/chat/rooms/${roomId}`, { method: 'DELETE' })
       if (activeRoomId === roomId) {
         setMessages([])
+        setPendingRouter(null)
       }
       await loadRooms()
     } catch (error) {
@@ -252,72 +339,189 @@ function App() {
   }
 
   const handleSelectChat = (roomId) => {
+    setPendingRouter(null)
     setActiveRoomId(roomId)
     setMobileSidebarOpen(false)
   }
 
   const handleSendMessage = async (content) => {
     const text = content.trim()
-    if (!text || !activeRoom || isSending) return
+    if (!text || !activeRoom || isSending || pendingRouter) return
 
     const targetRoomId = activeRoom.id
     const optimisticUserMessage = createTemporaryMessage(targetRoomId, 'user', text, {
       source: 'frontend_optimistic',
     })
-    const loadingAssistantMessage = {
-      ...createTemporaryMessage(targetRoomId, 'assistant', '正在等待 LLM 回覆...', {
-        source: 'frontend_loading',
-      }),
-      status: 'loading',
-    }
 
     setActionError('')
     setIsSending(true)
-    setMessages((current) => [...current, optimisticUserMessage, loadingAssistantMessage])
+
+    if (!settings.enableContextRouter) {
+      const loadingAssistantMessage = createLoadingAssistantMessage(targetRoomId)
+      setMessages((current) => [...current, optimisticUserMessage, loadingAssistantMessage])
+
+      try {
+        await postMessageToBackend({
+          targetRoomId,
+          text,
+          optimisticUserMessage,
+          loadingAssistantMessage,
+        })
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : '訊息送出失敗'
+        setActionError(errorMessage)
+        markLoadingMessageError(loadingAssistantMessage.id, errorMessage)
+      } finally {
+        setIsSending(false)
+      }
+      return
+    }
+
+    const routerLoadingMessage = {
+      ...createTemporaryMessage(targetRoomId, 'assistant', 'Context Router 判斷中...', {
+        type: 'router_decision',
+        status: 'loading',
+      }),
+      status: 'router_loading',
+    }
+    setMessages((current) => [...current, optimisticUserMessage, routerLoadingMessage])
 
     try {
-      const data = await apiRequest(`/api/chat/rooms/${targetRoomId}/messages`, {
+      const routeData = await apiRequest(`/api/chat/rooms/${targetRoomId}/route`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
           model: settings.model,
-          temperature: settings.temperature,
-          systemPrompt: settings.systemPrompt,
-          memoryRounds: settings.memoryRounds,
-          enableContextRouter: settings.enableContextRouter,
-          enableDbQuery: settings.enableDbQuery,
-          enableRag: settings.enableRag,
-          enableImageSkill: settings.enableImageSkill,
-          enableAuditLog: settings.enableAuditLog,
         }),
       })
+      const routerResult = routeData.router
+      const selectedRoute = routerResult?.route ?? 'general_chat'
+      const routerDecisionMessage = createRouterDecisionMessage(
+        targetRoomId,
+        routerResult,
+        selectedRoute,
+        settings.autoRoute ? 'router_confirmed' : 'router_pending',
+      )
 
-      const persistedMessages = data.messages ?? []
-      setMessages((current) => [
-        ...current.filter(
-          (message) =>
-            message.id !== optimisticUserMessage.id && message.id !== loadingAssistantMessage.id,
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === routerLoadingMessage.id ? routerDecisionMessage : message,
         ),
-        ...persistedMessages,
-      ])
-      await loadRooms(targetRoomId)
+      )
+
+      if (!settings.autoRoute) {
+        setPendingRouter({
+          roomId: targetRoomId,
+          text,
+          optimisticUserMessage,
+          routerMessageId: routerDecisionMessage.id,
+          routerResult,
+          selectedRoute,
+        })
+        setIsSending(false)
+        return
+      }
+
+      const loadingAssistantMessage = createLoadingAssistantMessage(targetRoomId, '已接受 Router 判斷，正在執行...')
+      setMessages((current) => [...current, loadingAssistantMessage])
+
+      await postMessageToBackend({
+        targetRoomId,
+        text,
+        optimisticUserMessage,
+        loadingAssistantMessage,
+        routerResult,
+        confirmedRoute: selectedRoute,
+      })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '送出訊息失敗'
+      const errorMessage = error instanceof Error ? error.message : 'Router 判斷失敗'
       setActionError(errorMessage)
       setMessages((current) =>
         current.map((message) =>
-          message.id === loadingAssistantMessage.id
+          message.id === routerLoadingMessage.id
             ? {
                 ...message,
                 status: 'error',
-                content: `LLM 回覆失敗：${errorMessage}`,
-                metadata: { source: 'frontend_error', error: errorMessage },
-                metadata_json: JSON.stringify({ source: 'frontend_error', error: errorMessage }),
+                content: `Router 判斷失敗：${errorMessage}`,
+                metadata: { source: 'frontend_router_error', error: errorMessage },
+                metadata_json: JSON.stringify({
+                  source: 'frontend_router_error',
+                  error: errorMessage,
+                }),
               }
             : message,
         ),
       )
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  const handleSelectRoute = (routerMessageId, selectedRoute) => {
+    setPendingRouter((current) =>
+      current && current.routerMessageId === routerMessageId
+        ? { ...current, selectedRoute }
+        : current,
+    )
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === routerMessageId
+          ? {
+              ...message,
+              metadata: { ...message.metadata, selectedRoute },
+              metadata_json: JSON.stringify({ ...message.metadata, selectedRoute }),
+            }
+          : message,
+      ),
+    )
+  }
+
+  const handleConfirmRoute = async (routerMessageId) => {
+    if (!pendingRouter || pendingRouter.routerMessageId !== routerMessageId || isSending) return
+
+    const loadingAssistantMessage = createLoadingAssistantMessage(
+      pendingRouter.roomId,
+      '已確認 route，正在執行...',
+    )
+
+    setActionError('')
+    setIsSending(true)
+    setMessages((current) => [
+      ...current.map((message) =>
+        message.id === routerMessageId
+          ? {
+              ...message,
+              metadata: {
+                ...message.metadata,
+                selectedRoute: pendingRouter.selectedRoute,
+                status: 'router_confirmed',
+              },
+              metadata_json: JSON.stringify({
+                ...message.metadata,
+                selectedRoute: pendingRouter.selectedRoute,
+                status: 'router_confirmed',
+              }),
+            }
+          : message,
+      ),
+      loadingAssistantMessage,
+    ])
+
+    try {
+      await postMessageToBackend({
+        targetRoomId: pendingRouter.roomId,
+        text: pendingRouter.text,
+        optimisticUserMessage: pendingRouter.optimisticUserMessage,
+        loadingAssistantMessage,
+        routerResult: pendingRouter.routerResult,
+        confirmedRoute: pendingRouter.selectedRoute,
+      })
+      setPendingRouter(null)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Router 執行失敗'
+      setActionError(errorMessage)
+      markLoadingMessageError(loadingAssistantMessage.id, errorMessage)
     } finally {
       setIsSending(false)
     }
@@ -371,13 +575,16 @@ function App() {
         chat={activeChat}
         dbHealth={dbHealth}
         error={messagesError || actionError}
+        hasPendingRouter={Boolean(pendingRouter)}
         isLoadingMessages={messagesStatus === 'loading'}
         isSending={isSending}
         memoryRounds={settings.memoryRounds}
         selectedModel={settings.model}
+        onConfirmRoute={handleConfirmRoute}
         onOpenControls={() => setMobileControlsOpen(true)}
         onOpenSidebar={() => setMobileSidebarOpen(true)}
         onRefreshDbHealth={checkDbHealth}
+        onSelectRoute={handleSelectRoute}
         onSendMessage={handleSendMessage}
       />
 
