@@ -367,7 +367,7 @@ Codex，我現在要進入第 7 階段：串接 OpenAI API。
 請你幫我完成：
 
 1. 後端從 .env 讀取 OPENAI_API_KEY 
-2. 加入 OpenAI Python SDK 到 requirements.txt。
+2. 看看 requirements.txt 有沒有需要 update
 3. 新增 GET /api/llm/health：
    - 檢查 OPENAI_API_KEY 是否存在。
    - 不要回傳完整 key。
