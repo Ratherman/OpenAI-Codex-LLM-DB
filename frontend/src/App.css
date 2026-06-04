@@ -513,6 +513,65 @@ button {
   padding-right: 4px;
 }
 
+.db-summary-card {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.db-summary-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.db-summary-header h3 {
+  color: var(--text);
+  font-size: 18px;
+  margin: 0;
+}
+
+.summary-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.summary-grid div {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-height: 68px;
+  padding: 10px;
+}
+
+.summary-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.summary-grid strong {
+  color: var(--text);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.summary-error {
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 36%, transparent);
+  border-radius: 8px;
+  color: var(--danger);
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 10px;
+}
+
 .field {
   display: grid;
   gap: 8px;

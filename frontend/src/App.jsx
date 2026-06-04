@@ -54,6 +54,11 @@ function App() {
     version: '',
     error: '',
   })
+  const [dbSummary, setDbSummary] = useState({
+    status: 'checking',
+    data: null,
+    error: '',
+  })
 
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) ?? chats[0],
@@ -85,9 +90,35 @@ function App() {
     }
   }, [])
 
+  const checkDbSummary = useCallback(async () => {
+    setDbSummary({ status: 'checking', data: null, error: '' })
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/db/summary`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`)
+      }
+
+      setDbSummary({
+        status: 'online',
+        data: data.summary,
+        error: '',
+      })
+    } catch (error) {
+      setDbSummary({
+        status: 'offline',
+        data: null,
+        error: error instanceof Error ? error.message : 'Unknown database summary error',
+      })
+    }
+  }, [])
+
   useEffect(() => {
     checkDbHealth()
-  }, [checkDbHealth])
+    checkDbSummary()
+  }, [checkDbHealth, checkDbSummary])
 
   const handleCreateChat = () => {
     const chat = createChat(chats.length + 1)
@@ -228,10 +259,12 @@ function App() {
 
       <ControlPanel
         collapsed={controlsCollapsed}
+        dbSummary={dbSummary}
         mobileOpen={mobileControlsOpen}
         settings={settings}
         onChange={handleSettingChange}
         onCloseMobile={() => setMobileControlsOpen(false)}
+        onRefreshSummary={checkDbSummary}
         onToggleCollapse={() => setControlsCollapsed((current) => !current)}
       />
     </div>

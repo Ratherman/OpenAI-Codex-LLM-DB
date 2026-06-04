@@ -9,8 +9,14 @@
 - SQLAlchemy + PyMySQL 連線 MySQL
 - `GET /api/health`
 - `GET /api/db/health`
+- `GET /api/db/tables`
+- `GET /api/db/summary`
+- `GET /api/employees`
+- `GET /api/expenses`
+- `GET /api/invoices`
 - `POST /api/chat`
 - 前端可顯示 DB 連線狀態
+- 前端右側 Control Panel 可顯示資料庫摘要
 - 前端選到的模型會送到後端，後端可依 `.env` 的 `OPENAI_API_KEY` 決定 mock 或呼叫 OpenAI
 
 ## 專案結構
@@ -32,8 +38,12 @@
 │  │  ├─ services/
 │  │  ├─ config.py
 │  │  ├─ db.py
+│  │  ├─ models.py
 │  │  ├─ __init__.py
 │  │  └─ main.py
+│  ├─ scripts/
+│  │  ├─ init_db.py
+│  │  └─ seed_db.py
 │  └─ requirements.txt
 ├─ .env.example
 ├─ docker-compose.yml
@@ -75,6 +85,73 @@ docker compose ps
 
 ```powershell
 docker compose logs db
+```
+
+## 初始化與 Seed 資料庫
+
+先確認 MySQL 已啟動：
+
+```powershell
+docker compose up -d
+docker compose ps
+```
+
+建立資料表：
+
+```powershell
+conda activate Codex_Demo
+python backend/scripts/init_db.py
+```
+
+匯入課堂 demo seed data：
+
+```powershell
+conda activate Codex_Demo
+python backend/scripts/seed_db.py
+```
+
+`seed_db.py` 會重建固定 demo data，方便課堂重跑：
+
+- 4 個部門
+- 12 位員工
+- 8 個廠商
+- 30 筆費用資料
+- 5 筆發票資料
+- 少量 chat/audit 範例紀錄
+
+資料 API：
+
+```powershell
+curl http://127.0.0.1:5000/api/db/tables
+curl http://127.0.0.1:5000/api/db/summary
+curl http://127.0.0.1:5000/api/employees
+curl http://127.0.0.1:5000/api/expenses
+curl http://127.0.0.1:5000/api/invoices
+```
+
+## 在 Docker 裡查看目前資料
+
+進入 MySQL client：
+
+```powershell
+docker exec -it codex_db mysql -ucodex_user -pcodex_pass codex_demo
+```
+
+進入後可以執行：
+
+```sql
+SHOW TABLES;
+SELECT COUNT(*) AS employee_count FROM employees;
+SELECT COUNT(*) AS expense_count FROM expense_reports;
+SELECT SUM(amount) AS expense_total FROM expense_reports;
+SELECT * FROM employees LIMIT 5;
+SELECT * FROM invoices LIMIT 5;
+```
+
+也可以直接用一行指令查詢：
+
+```powershell
+docker exec -it codex_db mysql -ucodex_user -pcodex_pass codex_demo -e "SHOW TABLES; SELECT COUNT(*) AS employees FROM employees; SELECT SUM(amount) AS expense_total FROM expense_reports;"
 ```
 
 ## 安裝後端套件

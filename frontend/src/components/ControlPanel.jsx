@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, SlidersHorizontal, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Database, RefreshCw, X } from 'lucide-react'
 
 const toggleFields = [
   ['enableContextRouter', 'Enable Context Router'],
@@ -8,8 +8,18 @@ const toggleFields = [
   ['enableAuditLog', 'Enable Audit Log'],
 ]
 
-function ControlPanel({ collapsed, mobileOpen, settings, onChange, onCloseMobile, onToggleCollapse }) {
+function ControlPanel({
+  collapsed,
+  dbSummary,
+  mobileOpen,
+  settings,
+  onChange,
+  onCloseMobile,
+  onRefreshSummary,
+  onToggleCollapse,
+}) {
   const showRail = collapsed && !mobileOpen
+  const summary = dbSummary.data
 
   if (showRail) {
     return (
@@ -57,6 +67,55 @@ function ControlPanel({ collapsed, mobileOpen, settings, onChange, onCloseMobile
       </div>
 
       <div className="settings-stack">
+        <section className="db-summary-card" aria-label="資料庫摘要">
+          <div className="db-summary-header">
+            <div>
+              <p className="panel-kicker">Database</p>
+              <h3>資料摘要</h3>
+            </div>
+            <button
+              aria-label="重新整理資料摘要"
+              className="icon-button"
+              title="重新整理資料摘要"
+              type="button"
+              onClick={onRefreshSummary}
+            >
+              <RefreshCw size={17} />
+            </button>
+          </div>
+
+          {dbSummary.status === 'offline' ? (
+            <p className="summary-error">{dbSummary.error}</p>
+          ) : (
+            <div className="summary-grid">
+              <div>
+                <span>員工</span>
+                <strong>{summary?.employee_count ?? '-'}</strong>
+              </div>
+              <div>
+                <span>費用筆數</span>
+                <strong>{summary?.expense_count ?? '-'}</strong>
+              </div>
+              <div>
+                <span>費用總額</span>
+                <strong>{summary?.expense_total ? `TWD ${summary.expense_total}` : '-'}</strong>
+              </div>
+              <div>
+                <span>發票</span>
+                <strong>{summary?.invoice_count ?? '-'}</strong>
+              </div>
+              <div>
+                <span>廠商</span>
+                <strong>{summary?.vendor_count ?? '-'}</strong>
+              </div>
+              <div>
+                <span>稽核紀錄</span>
+                <strong>{summary?.audit_log_count ?? '-'}</strong>
+              </div>
+            </div>
+          )}
+        </section>
+
         <label className="field">
           <span>模型選擇</span>
           <select value={settings.model} onChange={(event) => onChange('model', event.target.value)}>
@@ -120,8 +179,8 @@ function ControlPanel({ collapsed, mobileOpen, settings, onChange, onCloseMobile
       </div>
 
       <div className="control-footer">
-        <SlidersHorizontal size={18} />
-        <span>Stage 3 UI</span>
+        <Database size={18} />
+        <span>Stage 5 Data</span>
       </div>
     </aside>
   )
