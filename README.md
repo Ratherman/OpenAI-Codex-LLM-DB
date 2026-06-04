@@ -43,7 +43,7 @@
 目標：不要急著寫程式，先讓 Codex 確認 Node、Python、Docker 是否可用，並建立清楚的專案規劃。
 
 ```text
-Codex，我明天要上一堂「OpenAI Codex 實戰：打造可串接資料庫的 AI Agent 系統」課程。
+Codex，我正在上「OpenAI Codex 實戰：打造可串接資料庫的 AI Agent 系統」課程。
 
 我希望你先幫我檢查目前電腦環境，不要先大改檔案。請你完成：
 
