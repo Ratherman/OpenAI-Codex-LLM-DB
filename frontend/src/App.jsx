@@ -37,6 +37,7 @@ const defaultSettings = {
   temperature: 0.3,
   systemPrompt: '你是一個可以協助查詢資料庫與整理資訊的 AI Agent，請用繁體中文回答。',
   memoryRounds: 5,
+  ragTopK: 3,
   enableContextRouter: true,
   autoRoute: false,
   enableDbQuery: true,
@@ -226,6 +227,7 @@ function App() {
     temperature: settings.temperature,
     systemPrompt: settings.systemPrompt,
     memoryRounds: settings.memoryRounds,
+    ragTopK: settings.ragTopK,
     enableContextRouter: settings.enableContextRouter,
     autoRoute: settings.autoRoute,
     enableDbQuery: settings.enableDbQuery,
@@ -245,6 +247,23 @@ function App() {
         return [message]
       }),
     )
+  }
+
+  const mergeReturnedMessages = (returnedMessages) => {
+    setMessages((current) => {
+      const nextMessages = [...current]
+
+      for (const returnedMessage of returnedMessages ?? []) {
+        const index = nextMessages.findIndex((message) => message.id === returnedMessage.id)
+        if (index >= 0) {
+          nextMessages[index] = returnedMessage
+        } else {
+          nextMessages.push(returnedMessage)
+        }
+      }
+
+      return nextMessages
+    })
   }
 
   const markLoadingMessageError = (messageId, errorMessage) => {
@@ -527,6 +546,49 @@ function App() {
     }
   }
 
+  const handleConfirmDbWrite = async (messageId) => {
+    if (!activeRoom || isSending) return
+
+    setActionError('')
+    setIsSending(true)
+
+    try {
+      const data = await apiRequest(`/api/chat/rooms/${activeRoom.id}/db-write/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId }),
+      })
+      mergeReturnedMessages(data.messages ?? [])
+      await loadRooms(activeRoom.id)
+      await checkDbSummary()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '確認寫入失敗')
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  const handleCancelDbWrite = async (messageId) => {
+    if (!activeRoom || isSending) return
+
+    setActionError('')
+    setIsSending(true)
+
+    try {
+      const data = await apiRequest(`/api/chat/rooms/${activeRoom.id}/db-write/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId }),
+      })
+      mergeReturnedMessages(data.messages ?? [])
+      await loadRooms(activeRoom.id)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '取消寫入失敗')
+    } finally {
+      setIsSending(false)
+    }
+  }
+
   const handleSettingChange = (key, value) => {
     setSettings((current) => ({ ...current, [key]: value }))
   }
@@ -580,6 +642,8 @@ function App() {
         isSending={isSending}
         memoryRounds={settings.memoryRounds}
         selectedModel={settings.model}
+        onCancelDbWrite={handleCancelDbWrite}
+        onConfirmDbWrite={handleConfirmDbWrite}
         onConfirmRoute={handleConfirmRoute}
         onOpenControls={() => setMobileControlsOpen(true)}
         onOpenSidebar={() => setMobileSidebarOpen(true)}

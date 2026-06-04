@@ -112,7 +112,7 @@ function ControlPanel({
                 <strong>{summary?.vendor_count ?? '-'}</strong>
               </div>
               <div>
-                <span>稽核紀錄</span>
+                <span>Audit Logs</span>
                 <strong>{summary?.audit_log_count ?? '-'}</strong>
               </div>
             </div>
@@ -146,14 +146,14 @@ function ControlPanel({
             </div>
             <div className={`health-row health-${llmHealth.status}`}>
               <span>API</span>
-              <strong>{llmHealth.apiReachable ? '可連線' : '未確認'}</strong>
+              <strong>{llmHealth.apiReachable ? '可連線' : '無法連線'}</strong>
             </div>
           </div>
           {llmHealth.error ? <p className="summary-error">{llmHealth.error}</p> : null}
         </section>
 
         <label className="field">
-          <span>模型選擇</span>
+          <span>模型</span>
           <input
             list="model-options"
             value={settings.model}
@@ -205,6 +205,21 @@ function ControlPanel({
           </div>
         </label>
 
+        <label className="field">
+          <span>RAG Top-K</span>
+          <div className="range-row">
+            <input
+              max="5"
+              min="1"
+              step="1"
+              type="range"
+              value={settings.ragTopK}
+              onChange={(event) => onChange('ragTopK', Number(event.target.value))}
+            />
+            <output>{settings.ragTopK}</output>
+          </div>
+        </label>
+
         <div aria-label="功能開關" className="toggle-stack">
           {toggleFields.map(([key, label]) => (
             <label className="switch-row" key={key}>
@@ -221,7 +236,7 @@ function ControlPanel({
 
       <div className="control-footer">
         <Database size={18} />
-        <span>Stage 5 Data</span>
+        <span>Stage 12 RAG</span>
       </div>
     </aside>
   )

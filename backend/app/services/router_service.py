@@ -24,10 +24,15 @@ ROUTER_SYSTEM_PROMPT = """
 
 可用 route：
 1. general_chat：一般聊天、閒聊、寫作、摘要、翻譯。
-2. db_query：查詢資料庫，例如員工、部門、費用、發票、廠商。
+2. db_query：查詢 MySQL 內的營運資料，例如員工、部門、費用紀錄、發票資料、廠商資料。
 3. db_write：新增或修改資料庫資料，例如新增費用、寫入發票、更新員工資料。
-4. rag：查公司 SOP、MIS 常見問題、VPN、帳號、網路、設備、內部流程。
+4. rag：查公司 MIS / 行政 SOP / 制度流程 / 常見問題，例如忘記密碼、VPN 無法連線、Gmail 無法寄信、筆電黑畫面、印表機無法列印、發票報銷流程、出差費用核銷規則。
 5. image_skill：圖片辨識，例如發票、收據、文件截圖、請辨識這張圖片。
+
+判斷提示：
+- 問「有哪些員工、費用總額、哪個廠商發票最高」這類要查資料庫內容的問題走 db_query。
+- 問「怎麼報銷、流程、規則、SOP、怎麼辦」這類政策/操作說明走 rag。
+- 問「新增、建立、寫入、記一筆」這類要新增資料走 db_write。
 
 JSON 欄位：
 {
@@ -80,17 +85,36 @@ def parse_router_json(raw_text):
             raise
         payload = json.loads(match.group(0))
 
-    decision = RouterDecision.model_validate(normalize_router_payload(payload))
-    return decision
+    return RouterDecision.model_validate(normalize_router_payload(payload))
 
 
 def keyword_fallback(message, reason):
     text = message.lower()
 
+    rag_keywords = [
+        "sop",
+        "mis",
+        "vpn",
+        "密碼",
+        "忘記密碼",
+        "連不上",
+        "怎麼辦",
+        "流程",
+        "規則",
+        "報銷",
+        "核銷",
+        "無法寄信",
+        "gmail",
+        "黑畫面",
+        "印表機",
+        "卡紙",
+        "門禁",
+        "mfa",
+        "釣魚",
+    ]
     image_keywords = ["圖片", "照片", "截圖", "辨識", "收據", "這張", "這個檔案", "拍照"]
     write_keywords = ["新增", "建立", "寫入", "修改", "更新", "刪除", "新增一筆", "記一筆"]
-    rag_keywords = ["sop", "mis", "vpn", "連不上", "怎麼辦", "常見問題", "流程", "故障", "帳號", "網路"]
-    db_keywords = ["員工", "部門", "費用", "發票", "廠商", "資訊部", "財務", "查詢", "有哪些", "清單"]
+    db_keywords = ["員工", "部門", "費用", "發票", "廠商", "資訊部", "財務", "查詢", "有哪些", "清單", "總額"]
 
     if any(keyword in text for keyword in image_keywords):
         route = "image_skill"
@@ -100,7 +124,7 @@ def keyword_fallback(message, reason):
         confidence = 0.82
     elif any(keyword in text for keyword in rag_keywords):
         route = "rag"
-        confidence = 0.8
+        confidence = 0.82
     elif any(keyword in text for keyword in db_keywords):
         route = "db_query"
         confidence = 0.78

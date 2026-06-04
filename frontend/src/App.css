@@ -587,6 +587,218 @@ button {
   padding: 10px 12px;
 }
 
+.db-write-panel {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.rag-panel {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.rag-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.rag-header span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.rag-header strong {
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 36%, transparent);
+  border-radius: 999px;
+  color: var(--primary-strong);
+  font-size: 12px;
+  padding: 4px 9px;
+}
+
+.rag-details {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 14px;
+  overflow: hidden;
+}
+
+.rag-details summary {
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+
+.rag-ref-list {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.rag-ref-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+}
+
+.rag-ref-item strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.rag-ref-item span,
+.rag-ref-item small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.db-write-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.db-write-header span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.db-write-header strong {
+  background: var(--warning-soft);
+  border: 1px solid color-mix(in srgb, var(--warning) 36%, transparent);
+  border-radius: 999px;
+  color: var(--warning);
+  font-size: 12px;
+  padding: 4px 9px;
+}
+
+.db-write-status {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.db-write-warning,
+.db-write-warning-list {
+  background: var(--warning-soft);
+  border: 1px solid color-mix(in srgb, var(--warning) 32%, transparent);
+  border-radius: 8px;
+  color: var(--warning);
+  font-size: 13px;
+  margin: 0;
+  padding: 9px 10px;
+}
+
+.db-write-warning-list {
+  padding-left: 28px;
+}
+
+.write-field-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.write-field-grid div {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px;
+}
+
+.write-field-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.write-field-grid strong {
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.db-write-details {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px;
+}
+
+.db-write-details summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.db-write-details .write-field-grid {
+  margin-top: 9px;
+}
+
+.db-write-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.confirm-write-button,
+.cancel-write-button {
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.confirm-write-button {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.confirm-write-button:hover {
+  background: var(--primary-strong);
+}
+
+.cancel-write-button {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.cancel-write-button:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
 .router-card {
   display: grid;
   gap: 12px;
@@ -1201,6 +1413,10 @@ button {
 
   .route-button-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .write-field-grid {
+    grid-template-columns: 1fr;
   }
 
   .composer {

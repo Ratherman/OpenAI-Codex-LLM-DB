@@ -460,3 +460,106 @@ python backend/scripts/test_sql_agent.py
 - `各部門費用總額是多少？依金額高到低排序。`
 - `找出還沒核准且金額超過 3000 的費用。`
 - `哪個廠商的發票總金額最高？`
+
+## 受控 DB Write
+
+第 11 階段加入受控資料庫寫入。當 Context Router 判斷為 `db_write` 時，後端不允許 LLM 產生任意 `INSERT` / `UPDATE` SQL，而是只允許兩個白名單工具：
+
+- `create_expense_report`
+- `create_invoice`
+
+流程：
+
+1. 後端先從自然語言抽取結構化欄位。
+2. 使用 Pydantic 驗證欄位。
+3. 必要欄位不足時，assistant 會追問缺少欄位。
+4. 欄位足夠時，assistant 只回傳「待確認寫入」卡片。
+5. 使用者按「確認寫入」後，前端才呼叫確認 endpoint。
+6. 後端重新驗證白名單工具 payload，使用 ORM 寫入資料庫。
+7. 寫入成功後，聊天訊息會顯示新增資料 ID。
+8. `audit_logs` 會記錄這次寫入操作。
+
+確認 / 取消 endpoint：
+
+```http
+POST /api/chat/rooms/:id/db-write/confirm
+POST /api/chat/rooms/:id/db-write/cancel
+```
+
+安全限制：
+
+- LLM 只能抽取欄位，不能直接產生寫入 SQL。
+- 後端只執行白名單工具。
+- 寫入前會二次驗證 Pydantic schema。
+- `create_expense_report` 必須能找到既有員工；廠商可為空或未關聯。
+- `create_invoice` 可選擇性關聯既有廠商。
+
+可測試語句：
+
+- `幫 Alice Wang 新增一筆 2026-05-22 的高鐵費用 1490 元，廠商是台灣高鐵，類別交通，說明是台北到台中出差。`
+- `新增一張發票，號碼 AB12345678，日期 2026-05-20，賣方統編 12345678，買方統編 87654321，金額 3150。`
+
+注意：seed data 目前沒有 `Alice Wang` 這位員工，所以第一句會要求補充正確的 employee code 或員工姓名。若要測試成功寫入費用，可改用既有員工，例如：
+
+```text
+幫 E005 新增一筆 2026-05-22 的高鐵費用 1490 元，廠商是台灣高鐵，類別交通，說明是台北到台中出差。
+```
+
+## RAG 知識庫
+
+第 12 階段加入 RAG 知識庫，資料存在 MySQL 的 `knowledge_chunks` 資料表：
+
+- `id`
+- `title`
+- `category`
+- `content`
+- `source`
+- `embedding_json`
+- `created_at`
+
+知識來源檔案：
+
+```text
+backend/data/qa_knowledge.json
+```
+
+初始化資料表：
+
+```powershell
+conda activate Codex_Demo
+python backend/scripts/init_db.py
+```
+
+產生 embeddings 並寫入 MySQL：
+
+```powershell
+conda activate Codex_Demo
+python backend/scripts/seed_knowledge.py
+```
+
+`seed_knowledge.py` 會使用 `text-embedding-3-small`。如果沒有設定 `OPENAI_API_KEY`，或 embedding API 呼叫失敗，script 會顯示錯誤並停止。
+
+RAG 流程：
+
+1. 使用者問題產生 embedding。
+2. 從 MySQL 讀取 `knowledge_chunks`。
+3. 使用 cosine similarity 找 top-k。
+4. 預設 `top_k = 3`，右側 `RAG Top-K` 可設定 1 到 5。
+5. 把 REF chunks 提供給 LLM 整理繁體中文回答。
+
+前端顯示：
+
+- 本次使用 route：`RAG`
+- 回答下方顯示可收合 `REF`
+- REF 使用 `[1] [2] [3]`，包含 title、source、similarity
+
+如果 `knowledge_chunks` 沒資料，系統會提示先執行：
+
+```powershell
+python backend/scripts/seed_knowledge.py
+```
+
+可測試問題：
+
+- `VPN 連不上或密碼過期怎麼辦？`
+- `發票要怎麼報銷？`

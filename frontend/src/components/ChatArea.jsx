@@ -10,6 +10,8 @@ function ChatArea({
   isLoadingMessages,
   isSending,
   memoryRounds,
+  onCancelDbWrite,
+  onConfirmDbWrite,
   onConfirmRoute,
   onOpenControls,
   onOpenSidebar,
@@ -101,6 +103,8 @@ function ChatArea({
           <MessageBubble
             key={message.id}
             message={message}
+            onCancelDbWrite={onCancelDbWrite}
+            onConfirmDbWrite={onConfirmDbWrite}
             onConfirmRoute={onConfirmRoute}
             onSelectRoute={onSelectRoute}
           />

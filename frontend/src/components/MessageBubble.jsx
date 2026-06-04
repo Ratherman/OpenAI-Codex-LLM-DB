@@ -9,6 +9,11 @@ const routeOptions = [
   { value: 'image_skill', label: 'image_skill' },
 ]
 
+const toolLabels = {
+  create_expense_report: '新增費用',
+  create_invoice: '新增發票',
+}
+
 function RouterDecisionCard({ message, onConfirmRoute, onSelectRoute }) {
   const metadata = message.metadata ?? {}
   const router = metadata.router
@@ -95,6 +100,83 @@ function RouterDecisionCard({ message, onConfirmRoute, onSelectRoute }) {
   )
 }
 
+function KeyValueGrid({ data }) {
+  const entries = Object.entries(data ?? {}).filter(([, value]) => value !== null && value !== undefined && value !== '')
+
+  if (!entries.length) {
+    return <p className="sql-empty-note">沒有可顯示的欄位。</p>
+  }
+
+  return (
+    <div className="write-field-grid">
+      {entries.map(([key, value]) => (
+        <div key={key}>
+          <span>{key}</span>
+          <strong>{String(value)}</strong>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DbWritePanel({ dbWrite, message, onCancelDbWrite, onConfirmDbWrite }) {
+  const status = dbWrite.status
+  const isPending = status === 'pending_confirmation'
+
+  return (
+    <div className="db-write-panel">
+      <div className="db-write-header">
+        <span>受控 DB Write</span>
+        <strong>{toolLabels[dbWrite.tool] ?? dbWrite.tool}</strong>
+      </div>
+
+      <p className="db-write-status">
+        {status === 'missing_fields'
+          ? '必要欄位不足'
+          : status === 'confirmed'
+            ? `已寫入 ID ${dbWrite.record_id ?? '-'}`
+            : status === 'canceled'
+              ? '已取消'
+              : '待確認寫入'}
+      </p>
+
+      {dbWrite.missing_fields?.length ? (
+        <div className="db-write-warning">
+          缺少欄位：{dbWrite.missing_fields.join('、')}
+        </div>
+      ) : null}
+
+      {dbWrite.warnings?.length ? (
+        <ul className="db-write-warning-list">
+          {dbWrite.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <KeyValueGrid data={dbWrite.fields} />
+
+      {dbWrite.resolved ? (
+        <details className="db-write-details">
+          <summary>解析到的資料庫關聯</summary>
+          <KeyValueGrid data={dbWrite.resolved} />
+        </details>
+      ) : null}
+
+      {isPending ? (
+        <div className="db-write-actions">
+          <button className="confirm-write-button" type="button" onClick={() => onConfirmDbWrite?.(message.id)}>
+            確認寫入
+          </button>
+          <button className="cancel-write-button" type="button" onClick={() => onCancelDbWrite?.(message.id)}>
+            取消
+          </button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function SqlResultTable({ columns, rows }) {
   if (!columns?.length) {
     return <p className="sql-empty-note">沒有欄位資料。</p>
@@ -159,18 +241,64 @@ function SqlAgentPanel({ sqlAgent }) {
   )
 }
 
-function AssistantContent({ message }) {
+function RagRouteBadge({ rag }) {
+  return (
+    <div className="rag-panel">
+      <div className="rag-header">
+        <span>本次使用 route</span>
+        <strong>{rag.route ?? 'RAG'}</strong>
+      </div>
+    </div>
+  )
+}
+
+function RagReferences({ rag }) {
+  return (
+    <details className="rag-details">
+      <summary>REF（{rag.refs?.length ?? 0} 筆）</summary>
+      <div className="rag-ref-list">
+        {(rag.refs ?? []).map((ref) => (
+          <div className="rag-ref-item" key={ref.index}>
+            <strong>[{ref.index}] {ref.title}</strong>
+            <span>{ref.source}</span>
+            <small>similarity {Number(ref.similarity ?? 0).toFixed(4)}</small>
+          </div>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+function AssistantContent({ message, onCancelDbWrite, onConfirmDbWrite }) {
   const sqlAgent = message.metadata?.sql_agent
+  const dbWrite = message.metadata?.db_write
+  const rag = message.metadata?.rag
 
   return (
     <>
       {sqlAgent ? <SqlAgentPanel sqlAgent={sqlAgent} /> : null}
+      {dbWrite ? (
+        <DbWritePanel
+          dbWrite={dbWrite}
+          message={message}
+          onCancelDbWrite={onCancelDbWrite}
+          onConfirmDbWrite={onConfirmDbWrite}
+        />
+      ) : null}
+      {rag ? <RagRouteBadge rag={rag} /> : null}
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+      {rag ? <RagReferences rag={rag} /> : null}
     </>
   )
 }
 
-function MessageBubble({ message, onConfirmRoute, onSelectRoute }) {
+function MessageBubble({
+  message,
+  onCancelDbWrite,
+  onConfirmDbWrite,
+  onConfirmRoute,
+  onSelectRoute,
+}) {
   const isUser = message.role === 'user'
   const isLoading = message.status === 'loading'
   const isRouterDecision = message.metadata?.type === 'router_decision'
@@ -206,7 +334,11 @@ function MessageBubble({ message, onConfirmRoute, onSelectRoute }) {
             <span />
           </span>
         ) : (
-          <AssistantContent message={message} />
+          <AssistantContent
+            message={message}
+            onCancelDbWrite={onCancelDbWrite}
+            onConfirmDbWrite={onConfirmDbWrite}
+          />
         )}
       </div>
     </article>

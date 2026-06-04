@@ -7,7 +7,9 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import get_session
 from app.models import ChatMessage, ChatRoom
+from app.services.db_write_service import DbWriteError, confirm_db_write, prepare_db_write
 from app.services.llm_service import MissingOpenAIKeyError, generate_reply, sanitize_error
+from app.services.rag_service import DEFAULT_TOP_K, RagError, run_rag
 from app.services.router_service import ROUTE_CAPABILITIES, RouterDecision, normalize_route, route_message
 from app.services.sql_agent_service import SqlAgentError, run_sql_agent
 
@@ -103,6 +105,9 @@ def get_route_gate_message(route, payload):
     if route == "db_query" and not parse_bool(payload, "enableDbQuery", False):
         return "DB Query 尚未啟用，請先在右側開啟。"
 
+    if route in {"db_query", "db_write"}:
+        return None
+
     if route == "rag" and not parse_bool(payload, "enableRag", False):
         return "RAG 尚未啟用，請先在右側開啟。"
 
@@ -119,16 +124,38 @@ def get_route_gate_message(route, payload):
     if route == "db_query" and not parse_bool(payload, "enableDbQuery", False):
         return "DB Query 尚未啟用，請先在右側開啟。"
 
-    if route == "db_query":
-        return None
-
     if route == "rag" and not parse_bool(payload, "enableRag", False):
         return "RAG 尚未啟用，請先在右側開啟。"
+
+    if route in {"db_query", "db_write", "rag"}:
+        return None
 
     if route == "image_skill" and not parse_bool(payload, "enableImageSkill", False):
         return "Image Skill 尚未啟用，請先在右側開啟。"
 
     return "此能力將在下一階段啟用。"
+
+
+def make_assistant_message(room_id, content, metadata):
+    return ChatMessage(
+        room_id=room_id,
+        role="assistant",
+        content=content,
+        metadata_json=json.dumps(metadata, ensure_ascii=False),
+    )
+
+
+def get_pending_write_message_or_404(session, room_id, message_id):
+    message = session.get(ChatMessage, message_id)
+    if not message or message.room_id != room_id or message.role != "assistant":
+        return None, (jsonify({"status": "error", "error": "pending write message not found"}), 404)
+
+    metadata = parse_metadata(message.metadata_json)
+    pending_write = metadata.get("db_write")
+    if not pending_write:
+        return None, (jsonify({"status": "error", "error": "message does not contain pending db write"}), 400)
+
+    return (message, metadata, pending_write), None
 
 
 @chat_rooms_bp.post("/api/chat/rooms")
@@ -285,6 +312,117 @@ def route_chat_room_message(room_id):
         session.close()
 
 
+@chat_rooms_bp.post("/api/chat/rooms/<int:room_id>/db-write/confirm")
+def confirm_chat_room_db_write(room_id):
+    payload = request.get_json(silent=True) or {}
+    message_id = payload.get("messageId")
+
+    if not message_id:
+        return jsonify({"status": "error", "error": "messageId is required"}), 400
+
+    session = get_session()
+    try:
+        room, error_response = get_room_or_404(session, room_id)
+        if error_response:
+            return error_response
+
+        result_tuple, pending_error = get_pending_write_message_or_404(session, room.id, int(message_id))
+        if pending_error:
+            return pending_error
+
+        pending_message, pending_metadata, pending_write = result_tuple
+        result = confirm_db_write(session, pending_write, actor="frontend_user")
+
+        pending_write["status"] = "confirmed"
+        pending_write["record_id"] = result["record_id"]
+        pending_write["audit_log_id"] = result["audit_log_id"]
+        pending_metadata["db_write"] = pending_write
+        pending_message.metadata_json = json.dumps(pending_metadata, ensure_ascii=False)
+
+        success_message = make_assistant_message(
+            room.id,
+            result["message"],
+            {
+                "provider": "db_write_agent",
+                "selected_route": "db_write",
+                "db_write": result,
+                "source": "db_write_confirm",
+            },
+        )
+        room.updated_at = datetime.utcnow()
+        session.add(success_message)
+        session.commit()
+
+        return jsonify(
+            {
+                "status": "ok",
+                "messages": [serialize_message(pending_message), serialize_message(success_message)],
+                "db_write": result,
+            }
+        )
+    except (DbWriteError, ValueError) as exc:
+        session.rollback()
+        return jsonify({"status": "error", "error": str(exc)}), 400
+    except SQLAlchemyError:
+        session.rollback()
+        return jsonify({"status": "error", "error": "資料庫寫入失敗，請確認資料是否重複或格式正確。"}), 500
+    finally:
+        session.close()
+
+
+@chat_rooms_bp.post("/api/chat/rooms/<int:room_id>/db-write/cancel")
+def cancel_chat_room_db_write(room_id):
+    payload = request.get_json(silent=True) or {}
+    message_id = payload.get("messageId")
+
+    if not message_id:
+        return jsonify({"status": "error", "error": "messageId is required"}), 400
+
+    session = get_session()
+    try:
+        room, error_response = get_room_or_404(session, room_id)
+        if error_response:
+            return error_response
+
+        result_tuple, pending_error = get_pending_write_message_or_404(session, room.id, int(message_id))
+        if pending_error:
+            return pending_error
+
+        pending_message, pending_metadata, pending_write = result_tuple
+        pending_write["status"] = "canceled"
+        pending_metadata["db_write"] = pending_write
+        pending_message.metadata_json = json.dumps(pending_metadata, ensure_ascii=False)
+
+        cancel_message = make_assistant_message(
+            room.id,
+            "已取消這次資料寫入，資料庫沒有新增任何資料。",
+            {
+                "provider": "db_write_agent",
+                "selected_route": "db_write",
+                "db_write": {
+                    "status": "canceled",
+                    "tool": pending_write.get("tool"),
+                },
+                "source": "db_write_cancel",
+            },
+        )
+        room.updated_at = datetime.utcnow()
+        session.add(cancel_message)
+        session.commit()
+
+        return jsonify(
+            {
+                "status": "ok",
+                "messages": [serialize_message(pending_message), serialize_message(cancel_message)],
+            }
+        )
+    except (ValueError, SQLAlchemyError) as exc:
+        session.rollback()
+        return jsonify({"status": "error", "error": str(exc)}), 500
+    finally:
+        session.close()
+
+
 @chat_rooms_bp.post("/api/chat/rooms/<int:room_id>/messages")
 def create_chat_room_message(room_id):
     payload = request.get_json(silent=True) or {}
@@ -305,6 +443,13 @@ def create_chat_room_message(room_id):
         return jsonify({"status": "error", "error": "memoryRounds must be an integer"}), 400
 
     memory_rounds = max(1, min(10, memory_rounds))
+
+    try:
+        rag_top_k = int(payload.get("ragTopK", DEFAULT_TOP_K))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "error": "ragTopK must be an integer"}), 400
+
+    rag_top_k = max(1, min(5, rag_top_k))
     enable_context_router = parse_bool(payload, "enableContextRouter", False)
     auto_route = parse_bool(payload, "autoRoute", True)
     router_decision = None
@@ -344,6 +489,7 @@ def create_chat_room_message(room_id):
                     "model": model,
                     "temperature": payload.get("temperature"),
                     "memory_rounds": memory_rounds,
+                    "rag_top_k": rag_top_k,
                     "context_router_enabled": enable_context_router,
                     "auto_route": auto_route,
                     "selected_route": selected_route,
@@ -418,6 +564,69 @@ def create_chat_room_message(room_id):
                     "error": llm_error,
                     "source": "sql_agent",
                 }
+        elif selected_route == "rag":
+            try:
+                rag_result = run_rag(
+                    session=session,
+                    api_key=current_app.config["OPENAI_API_KEY"],
+                    query=content,
+                    model=model,
+                    temperature=temperature,
+                    top_k=rag_top_k,
+                )
+                assistant_content = rag_result["answer"]
+                assistant_metadata = {
+                    "model": model,
+                    "provider": "rag",
+                    "memory_rounds": memory_rounds,
+                    "rag_top_k": rag_top_k,
+                    "context_router_enabled": enable_context_router,
+                    "auto_route": auto_route,
+                    "selected_route": selected_route,
+                    "router": serialize_router_decision(router_decision),
+                    "rag": {
+                        "route": rag_result["route"],
+                        "top_k": rag_result["top_k"],
+                        "refs": rag_result["refs"],
+                        "embedding_model": rag_result["embedding_model"],
+                    },
+                    "source": "rag",
+                }
+            except RagError as exc:
+                status = "rag_error"
+                llm_error = str(exc)
+                assistant_content = f"RAG 查詢失敗：{llm_error}"
+                assistant_metadata = {
+                    "model": model,
+                    "provider": "rag",
+                    "memory_rounds": memory_rounds,
+                    "rag_top_k": rag_top_k,
+                    "context_router_enabled": enable_context_router,
+                    "auto_route": auto_route,
+                    "selected_route": selected_route,
+                    "router": serialize_router_decision(router_decision),
+                    "error": llm_error,
+                    "source": "rag",
+                }
+        elif selected_route == "db_write":
+            db_write_result = prepare_db_write(
+                session=session,
+                api_key=current_app.config["OPENAI_API_KEY"],
+                message=content,
+                model=model,
+            )
+            assistant_content = db_write_result["message"]
+            assistant_metadata = {
+                "model": model,
+                "provider": "db_write_agent",
+                "memory_rounds": memory_rounds,
+                "context_router_enabled": enable_context_router,
+                "auto_route": auto_route,
+                "selected_route": selected_route,
+                "router": serialize_router_decision(router_decision),
+                "db_write": db_write_result,
+                "source": "db_write_agent",
+            }
         else:
             try:
                 llm_result = generate_reply(
@@ -473,12 +682,7 @@ def create_chat_room_message(room_id):
                     "source": "api",
                 }
 
-        assistant_message = ChatMessage(
-            room_id=room.id,
-            role="assistant",
-            content=assistant_content,
-            metadata_json=json.dumps(assistant_metadata, ensure_ascii=False),
-        )
+        assistant_message = make_assistant_message(room.id, assistant_content, assistant_metadata)
         room.updated_at = datetime.utcnow()
         session.add(assistant_message)
         session.commit()
@@ -496,8 +700,8 @@ def create_chat_room_message(room_id):
             ),
             201,
         )
-    except SQLAlchemyError as exc:
+    except SQLAlchemyError:
         session.rollback()
-        return jsonify({"status": "error", "error": str(exc)}), 500
+        return jsonify({"status": "error", "error": "資料庫操作失敗，請稍後再試。"}), 500
     finally:
         session.close()
