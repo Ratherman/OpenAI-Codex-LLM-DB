@@ -95,6 +95,81 @@ function RouterDecisionCard({ message, onConfirmRoute, onSelectRoute }) {
   )
 }
 
+function SqlResultTable({ columns, rows }) {
+  if (!columns?.length) {
+    return <p className="sql-empty-note">沒有欄位資料。</p>
+  }
+
+  if (!rows?.length) {
+    return <p className="sql-empty-note">查詢結果為空。</p>
+  }
+
+  return (
+    <div className="sql-table-wrap">
+      <table className="sql-result-table">
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th key={column}>{column}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={`${rowIndex}-${JSON.stringify(row)}`}>
+              {columns.map((column) => (
+                <td key={column}>{row[column] ?? ''}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function SqlAgentPanel({ sqlAgent }) {
+  return (
+    <div className="sql-agent-panel">
+      <div className="sql-agent-header">
+        <span>本次使用 route</span>
+        <strong>{sqlAgent.route ?? 'DB Query'}</strong>
+      </div>
+
+      <details className="sql-agent-details">
+        <summary>產生的 SQL</summary>
+        <pre>
+          <code>{sqlAgent.sql}</code>
+        </pre>
+        {sqlAgent.generator_reason ? <p>{sqlAgent.generator_reason}</p> : null}
+        {sqlAgent.validator_warnings?.length ? (
+          <ul>
+            {sqlAgent.validator_warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
+      </details>
+
+      <details className="sql-agent-details">
+        <summary>查詢結果表格（{sqlAgent.row_count ?? sqlAgent.rows?.length ?? 0} 筆）</summary>
+        <SqlResultTable columns={sqlAgent.columns} rows={sqlAgent.rows} />
+      </details>
+    </div>
+  )
+}
+
+function AssistantContent({ message }) {
+  const sqlAgent = message.metadata?.sql_agent
+
+  return (
+    <>
+      {sqlAgent ? <SqlAgentPanel sqlAgent={sqlAgent} /> : null}
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+    </>
+  )
+}
+
 function MessageBubble({ message, onConfirmRoute, onSelectRoute }) {
   const isUser = message.role === 'user'
   const isLoading = message.status === 'loading'
@@ -131,7 +206,7 @@ function MessageBubble({ message, onConfirmRoute, onSelectRoute }) {
             <span />
           </span>
         ) : (
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          <AssistantContent message={message} />
         )}
       </div>
     </article>

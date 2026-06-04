@@ -418,3 +418,45 @@ python backend/scripts/test_context_router.py
 - `新增一筆餐費 320 元` 應走 `db_write`
 - `VPN 連不上怎麼辦？` 應走 `rag`
 - `這張發票幫我辨識` 應走 `image_skill`
+
+## SQL Agent
+
+第 10 階段加入安全的動態 SQL Agent。當 Context Router 判斷為 `db_query`，且右側 `Enable DB Query` 開啟時，後端會執行：
+
+1. `schema_introspection_service`：讀取可查詢的業務資料表、欄位與關聯。
+2. `sql_generator_service`：把自然語言問題轉成 MySQL `SELECT`。
+3. `sql_validator_service`：在程式層檢查 SQL 安全性。
+4. `sql_executor_service`：執行 SQL。
+5. `answer_synthesizer_service`：把查詢結果整理成繁體中文回答。
+
+安全限制：
+
+- 只允許 `SELECT`。
+- 禁止 `INSERT` / `UPDATE` / `DELETE` / `DROP` / `ALTER` / `TRUNCATE` / `CREATE` 等語法。
+- 不允許多語句 SQL。
+- 不允許 SQL comment。
+- SQL 必須有 `LIMIT`，沒有時自動補 `LIMIT 50`，超過 50 會自動降到 50。
+- 只允許查詢業務表：`departments`、`employees`、`vendors`、`expense_reports`、`invoices`。
+- 不允許查詢 `chat_rooms`、`chat_messages`、`audit_logs` 或系統表。
+- 錯誤時回傳友善訊息，不把完整 stack trace 顯示給前端。
+
+前端 assistant 泡泡會顯示：
+
+- 本次使用 route：`DB Query`
+- 可收合的產生 SQL
+- 可收合的查詢結果表格
+- LLM 整理後的繁體中文回答
+
+測試 SQL Agent fallback：
+
+```powershell
+conda activate Codex_Demo
+python backend/scripts/test_sql_agent.py
+```
+
+可測試問題：
+
+- `資訊部有哪些員工？列出姓名、職稱、email。`
+- `各部門費用總額是多少？依金額高到低排序。`
+- `找出還沒核准且金額超過 3000 的費用。`
+- `哪個廠商的發票總金額最高？`

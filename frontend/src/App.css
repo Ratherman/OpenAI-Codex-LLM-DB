@@ -492,6 +492,101 @@ button {
   padding: 0;
 }
 
+.sql-agent-panel {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.sql-agent-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.sql-agent-header span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.sql-agent-header strong {
+  background: var(--success-soft);
+  border: 1px solid color-mix(in srgb, var(--success) 36%, transparent);
+  border-radius: 999px;
+  color: var(--success);
+  font-size: 12px;
+  padding: 4px 9px;
+}
+
+.sql-agent-details {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sql-agent-details summary {
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+
+.sql-agent-details pre {
+  border-radius: 0;
+  border-width: 1px 0 0;
+  margin: 0;
+  max-width: 100%;
+}
+
+.sql-agent-details p,
+.sql-agent-details ul {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+  padding: 0 12px 12px;
+}
+
+.sql-table-wrap {
+  border-top: 1px solid var(--border);
+  max-width: 100%;
+  overflow: auto;
+}
+
+.sql-result-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 100%;
+  white-space: nowrap;
+}
+
+.sql-result-table th,
+.sql-result-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.sql-result-table th {
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.sql-empty-note {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+  padding: 10px 12px;
+}
+
 .router-card {
   display: grid;
   gap: 12px;

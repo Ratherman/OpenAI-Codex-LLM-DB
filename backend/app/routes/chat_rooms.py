@@ -9,6 +9,7 @@ from app.db import get_session
 from app.models import ChatMessage, ChatRoom
 from app.services.llm_service import MissingOpenAIKeyError, generate_reply, sanitize_error
 from app.services.router_service import ROUTE_CAPABILITIES, RouterDecision, normalize_route, route_message
+from app.services.sql_agent_service import SqlAgentError, run_sql_agent
 
 chat_rooms_bp = Blueprint("chat_rooms", __name__)
 
@@ -101,6 +102,25 @@ def get_route_gate_message(route, payload):
 
     if route == "db_query" and not parse_bool(payload, "enableDbQuery", False):
         return "DB Query 尚未啟用，請先在右側開啟。"
+
+    if route == "rag" and not parse_bool(payload, "enableRag", False):
+        return "RAG 尚未啟用，請先在右側開啟。"
+
+    if route == "image_skill" and not parse_bool(payload, "enableImageSkill", False):
+        return "Image Skill 尚未啟用，請先在右側開啟。"
+
+    return "此能力將在下一階段啟用。"
+
+
+def get_route_gate_message(route, payload):
+    if route == "general_chat":
+        return None
+
+    if route == "db_query" and not parse_bool(payload, "enableDbQuery", False):
+        return "DB Query 尚未啟用，請先在右側開啟。"
+
+    if route == "db_query":
+        return None
 
     if route == "rag" and not parse_bool(payload, "enableRag", False):
         return "RAG 尚未啟用，請先在右側開啟。"
@@ -353,6 +373,51 @@ def create_chat_room_message(room_id):
                 "router": serialize_router_decision(router_decision),
                 "source": "router_gate",
             }
+        elif selected_route == "db_query":
+            try:
+                sql_agent_result = run_sql_agent(
+                    api_key=current_app.config["OPENAI_API_KEY"],
+                    question=content,
+                    model=model,
+                    temperature=temperature,
+                )
+                assistant_content = sql_agent_result["answer"]
+                assistant_metadata = {
+                    "model": model,
+                    "provider": "sql_agent",
+                    "memory_rounds": memory_rounds,
+                    "context_router_enabled": enable_context_router,
+                    "auto_route": auto_route,
+                    "selected_route": selected_route,
+                    "router": serialize_router_decision(router_decision),
+                    "sql_agent": {
+                        "route": sql_agent_result["route"],
+                        "sql": sql_agent_result["sql"],
+                        "raw_sql": sql_agent_result["raw_sql"],
+                        "generator_reason": sql_agent_result["generator_reason"],
+                        "generator_source": sql_agent_result["generator_source"],
+                        "validator_warnings": sql_agent_result["validator_warnings"],
+                        "columns": sql_agent_result["columns"],
+                        "rows": sql_agent_result["rows"],
+                        "row_count": sql_agent_result["row_count"],
+                    },
+                    "source": "sql_agent",
+                }
+            except SqlAgentError as exc:
+                status = "sql_error"
+                llm_error = str(exc)
+                assistant_content = f"SQL Agent 查詢失敗：{llm_error}"
+                assistant_metadata = {
+                    "model": model,
+                    "provider": "sql_agent",
+                    "memory_rounds": memory_rounds,
+                    "context_router_enabled": enable_context_router,
+                    "auto_route": auto_route,
+                    "selected_route": selected_route,
+                    "router": serialize_router_decision(router_decision),
+                    "error": llm_error,
+                    "source": "sql_agent",
+                }
         else:
             try:
                 llm_result = generate_reply(
