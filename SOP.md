@@ -3,6 +3,7 @@
 重要連結：
 - [下 Prompt 後的成果](https://docs.google.com/document/d/1i9k3oC_1Ah_HFOAObnuYsOX3hw4ideBWcniVE-NYnnY/edit?usp=sharing)
 - [簡報連結](https://drive.google.com/file/d/1XriimK7EhE1aHei-HFJT56LPz0dw44Ml/view?usp=drive_link)
+- [簡報連結_V2](https://drive.google.com/file/d/1uyPEH9gDyAxCEQUq4F--oZFazRwKD8MS/view?usp=drive_link)
 
 這份講義是給講師逐段貼給 Codex 的 Prompt 腳本，目標是在 6 小時左右，從空專案疊加出一個可以在學員筆電運作的系統：
 
